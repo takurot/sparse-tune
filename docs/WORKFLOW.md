@@ -1,6 +1,6 @@
 # sparsetune 開発ワークフロー
 
-**最終更新:** 2026-07-25
+**最終更新:** 2026-07-26
 **対象:** `sparsetune` v0.1.0
 
 このドキュメントは、`sparsetune` の機能追加・不具合修正・ドキュメント更新を、
@@ -207,11 +207,34 @@ v0.1.0 のリリース前には、次を確認します。
 ## 10. 現在のプロジェクト構成
 
 ```text
+.github/workflows/
+├── publish.yml
+├── test.yml
+└── testpypi.yml
 README.md
+RELEASE_NOTES.md
 LICENSE
+pyproject.toml
 docs/
 ├── SPEC.md
+├── VALIDATION.md
 └── WORKFLOW.md
+src/sparsetune/
+├── __init__.py
+├── __main__.py
+├── _backends.py
+├── _benchmark.py
+├── _cli.py
+├── _inspect.py
+├── _matrix.py
+├── _probe_worker.py
+├── _profile.py
+├── _runner.py
+├── _solve_worker.py
+├── _types.py
+└── _worker.py
+tests/
+├── fixtures/
+├── integration/
+└── unit/
 ```
-
-実装開始後は SPEC の構成に従って `src/sparsetune/` と `tests/` を追加します。
