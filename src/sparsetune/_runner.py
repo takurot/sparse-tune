@@ -308,3 +308,113 @@ def run_backend_in_subprocess(
                 SolveStatus.PROCESS_CRASH,
                 "Worker returned a malformed result",
             )
+
+
+def run_solve_in_subprocess(
+    backend_id: str,
+    canonical_npz_path: str | Path,
+    rhs_path: str | Path,
+    config: dict[str, Any],
+    *,
+    timeout: float,
+    expected_size: int,
+) -> tuple[SolverResult, NDArray[np.floating[Any]] | None]:
+    """Run one isolated solve and validate its result and solution vector."""
+
+    with tempfile.TemporaryDirectory(prefix="sparsetune-solve-") as temporary:
+        temporary_path = Path(temporary)
+        config_path = temporary_path / "config.json"
+        result_path = temporary_path / "result.json"
+        solution_path = temporary_path / "solution.npy"
+        try:
+            config_path.write_text(json.dumps(config), encoding="utf-8")
+        except (OSError, TypeError, ValueError):
+            return (
+                _error_result(
+                    backend_id,
+                    SolveStatus.INTERNAL_ERROR,
+                    "Unable to serialize worker configuration",
+                ),
+                None,
+            )
+
+        command = [
+            sys.executable,
+            "-m",
+            "sparsetune._solve_worker",
+            "--backend",
+            backend_id,
+            "--matrix-npz",
+            str(canonical_npz_path),
+            "--rhs",
+            str(rhs_path),
+            "--config",
+            str(config_path),
+            "--result",
+            str(result_path),
+            "--solution",
+            str(solution_path),
+        ]
+        try:
+            completed = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            return (
+                _error_result(
+                    backend_id,
+                    SolveStatus.TIMEOUT,
+                    f"Timed out after {timeout} seconds",
+                ),
+                None,
+            )
+
+        if completed.returncode != 0:
+            diagnostic = _sanitize_diagnostic(completed.stderr)
+            return (
+                _error_result(
+                    backend_id,
+                    SolveStatus.PROCESS_CRASH,
+                    diagnostic or "Worker exited without a diagnostic",
+                ),
+                None,
+            )
+
+        try:
+            payload = json.loads(result_path.read_text(encoding="utf-8"))
+            result = _parse_result(payload, backend_id)
+            if not solution_path.is_file():
+                if result.status in {
+                    SolveStatus.OOM,
+                    SolveStatus.UNSUPPORTED,
+                    SolveStatus.INTERNAL_ERROR,
+                }:
+                    return result, None
+                raise ValueError
+            solution = np.load(solution_path, allow_pickle=False)
+            if (
+                solution.ndim != 1
+                or solution.shape[0] != expected_size
+                or solution.dtype.name not in _SUPPORTED_DTYPES
+                or not np.all(np.isfinite(solution))
+            ):
+                raise ValueError
+            return result, np.asarray(solution).copy()
+        except (
+            OSError,
+            UnicodeError,
+            json.JSONDecodeError,
+            ValueError,
+            TypeError,
+        ):
+            return (
+                _error_result(
+                    backend_id,
+                    SolveStatus.PROCESS_CRASH,
+                    "Worker returned a malformed solve result",
+                ),
+                None,
+            )

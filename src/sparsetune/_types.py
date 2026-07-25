@@ -98,6 +98,24 @@ class SolverResult(_Serializable):
 
 
 @dataclass
+class SolveResult(_Serializable):
+    """Result of one selected backend solve."""
+
+    x: NDArray[np.floating[Any]] | None
+    backend: str
+    dtype: str
+    status: SolveStatus
+    iterations: int
+    residual_norm: float
+    relative_residual: float | None
+    convergence_threshold: float
+    setup_seconds: float
+    solve_seconds: float
+    total_seconds: float
+    error: str | None
+
+
+@dataclass
 class MatrixInfo(_Serializable):
     """Structural information about a canonical sparse matrix."""
 
