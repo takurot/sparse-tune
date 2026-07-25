@@ -1,3 +1,7 @@
 temp/
 .venv/
 .tokensave/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.coverage
