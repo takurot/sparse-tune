@@ -6,6 +6,7 @@ from ._matrix import (
     fingerprint_csr,
     load_matrix,
 )
+from ._inspect import diagnose_matrix
 from ._types import (
     BenchmarkResult,
     CanonicalMatrix,
@@ -32,6 +33,7 @@ __all__ = [
     "SolverResult",
     "__version__",
     "canonicalize_matrix",
+    "diagnose_matrix",
     "ensure_canonical_matrix",
     "fingerprint_csr",
     "load_matrix",
