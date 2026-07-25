@@ -1,5 +1,6 @@
 """Public package interface for sparsetune."""
 
+from ._benchmark import benchmark, list_backends
 from ._matrix import (
     canonicalize_matrix,
     ensure_canonical_matrix,
@@ -32,9 +33,11 @@ __all__ = [
     "SolveStatus",
     "SolverResult",
     "__version__",
+    "benchmark",
     "canonicalize_matrix",
     "diagnose_matrix",
     "ensure_canonical_matrix",
     "fingerprint_csr",
     "load_matrix",
+    "list_backends",
 ]
