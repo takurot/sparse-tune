@@ -235,4 +235,4 @@ Recommender -> Profile Cache / JSON
 
 ## ライセンス
 
-Apache License 2.0 を予定しています。
+[MIT License](LICENSE)
