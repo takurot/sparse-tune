@@ -1,7 +1,7 @@
 # sparsetune
 
-> **開発状況:** v0.1.0 設計・開発中  
-> **最終更新:** 2026-07-25
+> **開発状況:** v0.1.0 リリース準備中
+> **最終更新:** 2026-07-26
 
 `sparsetune` は、ユーザーの疎行列に対して利用可能な CPU / GPU 線形ソルバを
 隔離環境で比較し、再現可能な性能・精度レポートと推奨構成を生成する
@@ -12,21 +12,20 @@
 バックエンドを選びます。
 
 > [!IMPORTANT]
-> 現在のリポジトリは仕様策定段階です。以下のコマンド、Python API、
-> パッケージ配布は v0.1.0 の予定仕様であり、まだ利用できません。
-> 詳細は [機能仕様書](docs/SPEC.md) を参照してください。
+> CLI と Python API は実装済みですが、v0.1.0 はまだ PyPI に公開されていません。
+> 現在はソースからインストールして利用してください。
 
 ## 主な特徴
 
 - **ユーザー行列中心** — Matrix Market 形式の疎行列を渡すだけで比較
-- **CPU / GPU 横断比較** — SciPy（CPU）と CuPy（NVIDIA CUDA）に対応予定
+- **CPU / GPU 横断比較** — SciPy（CPU）と CuPy（NVIDIA CUDA）に対応
 - **サブプロセス隔離** — タイムアウト、OOM、プロセスクラッシュをバックエンド単位で捕捉
 - **2 種類の性能評価** — 一回の求解向け `end-to-end` と反復利用向け `steady-state`
 - **独立した精度検証** — 各バックエンドの解を CPU 上で再検証
 - **再現可能なレポート** — ハードウェア、ドライバ、ライブラリのバージョンを記録
 - **チューニング結果の再利用** — `tune` と `solve` を分離し、毎回の再計測を回避
 
-## 対応予定環境
+## 対応環境
 
 | 項目 | v0.1.0 |
 | --- | --- |
@@ -42,13 +41,16 @@ v0.1.0 では正方行列のみを対象とし、複素数、密行列形式、�
 
 ## インストール
 
-PyPI 公開後は、CPU 版を次のコマンドでインストールできる予定です。
+リポジトリから CPU 版をインストールできます。
 
 ```bash
-pip install sparsetune
+git clone https://github.com/takurot/sparse-tune.git
+cd sparse-tune
+pip install .
 ```
 
-CUDA を利用する場合は、環境に合う追加依存関係を指定します。
+PyPI 公開後は `pip install sparsetune` でインストールできます。CUDA を利用する場合は、
+環境に合う追加依存関係を指定します。
 
 ```bash
 # CUDA 12.x
@@ -188,6 +190,36 @@ CG は対称正定値（SPD）行列向けの反復法です。`sparsetune` の�
 中央値を採用します。推奨対象になるのは、CPU 上で計算した独立残差検証にも合格した
 `converged` の結果だけです。
 
+### 推奨理由と break-even
+
+CPU が一回の求解で最速の場合、`end_to_end` は次の形になります。
+
+```json
+{
+  "backend": "scipy:cpu",
+  "reason": "Fastest converged end-to-end result (0.0031 seconds)",
+  "speedup": 1.7,
+  "break_even_solves": null
+}
+```
+
+GPU が反復利用で最速の場合、転送・セットアップの初期コストを回収する求解回数も
+記録されます。
+
+```json
+{
+  "backend": "cupy:cuda:0",
+  "reason": "Fastest converged steady-state result (0.0012 seconds)",
+  "speedup": 2.4,
+  "break_even_solves": 8
+}
+```
+
+この例では、同じ行列を 8 回以上解くと GPU の初期コストを回収できる計算です。
+時間、speedup、break-even は行列と実行環境ごとに変わるため、実際の JSON レポートを
+判断に使用してください。収束した GPU 結果がない場合は CPU が選ばれ、
+`break_even_solves` は `null` になります。
+
 主な終了ステータス:
 
 - `converged` — 収束し、独立残差検証にも合格
@@ -224,7 +256,7 @@ Recommender -> Profile Cache / JSON
 
 | バージョン | 予定内容 |
 | --- | --- |
-| v0.1.0 | SciPy / CuPy、ネイティブ CG、隔離実行、CLI、プロファイル |
+| v0.1.0 | リリース準備中: SciPy / CuPy、ネイティブ CG、隔離実行、CLI、プロファイル |
 | v0.1.1 | PyPI 公開、README、CI/CD |
 | v0.2.0 | PyTorch CUDA、GMRES / BiCGSTAB、メモリ測定改善 |
 | v0.3.0 | MPS 実験対応、統一 CG、AMGX の検討 |
@@ -232,6 +264,7 @@ Recommender -> Profile Cache / JSON
 ## ドキュメント
 
 - [機能仕様書 SPEC v2.1](docs/SPEC.md)
+- [開発ワークフロー](docs/WORKFLOW.md)
 
 ## ライセンス
 

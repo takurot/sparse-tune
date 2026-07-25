@@ -14,7 +14,7 @@ import tempfile
 from typing import Any, Iterable, Sequence
 
 import numpy as np
-from scipy import __version__ as scipy_version
+from scipy import __version__ as scipy_version  # type: ignore[import-untyped]
 
 from ._inspect import diagnose_matrix, is_cg_eligible
 from ._matrix import canonicalize_matrix

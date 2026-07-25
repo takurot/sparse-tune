@@ -6,7 +6,7 @@ import importlib
 import json
 from pathlib import Path
 import tempfile
-from typing import Any, Mapping
+from typing import Any, Mapping, cast
 import warnings
 
 import numpy as np
@@ -270,9 +270,9 @@ def solve(
         if not isinstance(profile_config, dict):
             raise ProfileMismatchError("Profile configuration is missing")
         selected_dtype = str(profile_config.get("dtype"))
-        selected_rtol = float(profile_config.get("rtol"))
-        selected_atol = float(profile_config.get("atol"))
-        selected_max_iter = int(profile_config.get("max_iter"))
+        selected_rtol = float(cast(Any, profile_config.get("rtol")))
+        selected_atol = float(cast(Any, profile_config.get("atol")))
+        selected_max_iter = int(cast(Any, profile_config.get("max_iter")))
         if dtype is not None and dtype != selected_dtype:
             raise ProfileMismatchError("Profile dtype mismatch")
         if rtol is not None and rtol != selected_rtol:

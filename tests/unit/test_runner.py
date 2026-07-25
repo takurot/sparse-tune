@@ -16,6 +16,7 @@ from sparsetune._runner import (
     run_backend_in_subprocess,
 )
 from sparsetune._types import SolveStatus
+from sparsetune._types import SolverResult
 
 
 def test_canonicalize_rhs_inputs_are_equivalent(tmp_path: Path) -> None:
@@ -135,7 +136,7 @@ def test_crash_diagnostic_is_bounded_and_redacted(
         return subprocess.CompletedProcess(
             ["python"],
             2,
-            stdout="",
+            stdout=f"API_TOKEN={secret}",
             stderr=f'API_TOKEN="{secret}" ' + ("x" * 1000),
         )
 
@@ -154,6 +155,48 @@ def test_crash_diagnostic_is_bounded_and_redacted(
     assert secret not in result.error
     assert "[REDACTED]" in result.error
     assert len(result.error) <= 500
+
+
+def test_non_finite_worker_result_is_a_process_crash(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    def malformed(
+        command: list[str],
+        **_kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        result_path = Path(command[command.index("--result") + 1])
+        payload = SolverResult(
+            backend="scipy:cpu",
+            solver_impl="scipy.sparse.linalg.cg",
+            dtype="float64",
+            transfer_seconds=0.0,
+            setup_seconds=0.0,
+            solve_seconds=0.0,
+            total_seconds=float("nan"),
+            iterations=0,
+            residual_norm=0.0,
+            relative_residual=0.0,
+            convergence_threshold=0.0,
+            pool_used_gb=None,
+            status=SolveStatus.CONVERGED,
+            error=None,
+        )
+        result_path.write_text(payload.to_json(), encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", malformed)
+
+    result = run_backend_in_subprocess(
+        "scipy:cpu",
+        tmp_path / "matrix.npz",
+        tmp_path / "rhs.npy",
+        {},
+        timeout=1.0,
+    )
+
+    assert result.status is SolveStatus.PROCESS_CRASH
+    assert result.error == "Worker returned a malformed result"
 
 
 def test_malformed_worker_result_is_a_process_crash(
