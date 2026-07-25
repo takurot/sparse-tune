@@ -23,7 +23,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
       - run: python -m pip install --upgrade pip
-      - run: python -m pip install ".[test]" ruff
+      - run: python -m pip install -e ".[test]" ruff
       - run: coverage erase
       - run: coverage run -m pytest -m "not gpu"
       - run: coverage combine
