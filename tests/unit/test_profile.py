@@ -261,6 +261,22 @@ def test_explicit_scipy_solve_writes_matrix_market_solution(tmp_path: Path) -> N
     np.testing.assert_allclose(np.asarray(mmread(output)).reshape(-1), [1.0, 1.0])
 
 
+def test_explicit_scipy_solve_accepts_zero_rhs() -> None:
+    matrix = csr_matrix([[4.0, 1.0], [1.0, 3.0]])
+
+    result = solve(
+        matrix,
+        rhs=np.zeros(2),
+        backend="scipy:cpu",
+        atol=0.0,
+    )
+
+    assert result.status is SolveStatus.CONVERGED
+    assert result.relative_residual is None
+    assert result.convergence_threshold == 0.0
+    np.testing.assert_array_equal(result.x, [0.0, 0.0])
+
+
 def test_real_tune_save_load_solve_round_trip(tmp_path: Path) -> None:
     matrix = csr_matrix([[4.0, 1.0], [1.0, 3.0]])
     profile_path = tmp_path / "profile.json"

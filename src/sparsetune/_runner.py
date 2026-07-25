@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import fields
 import json
+import math
 from pathlib import Path
 import re
 import subprocess
@@ -137,7 +138,12 @@ def _error_result(
 
 
 def _is_number(value: Any) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return False
+    try:
+        return math.isfinite(float(value))
+    except (OverflowError, ValueError):
+        return False
 
 
 def _parse_sample(payload: Any) -> RunSample:
