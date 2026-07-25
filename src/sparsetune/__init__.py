@@ -8,6 +8,12 @@ from ._matrix import (
     load_matrix,
 )
 from ._inspect import diagnose_matrix
+from ._profile import (
+    ProfileMismatchError,
+    load_profile,
+    solve,
+    tune,
+)
 from ._types import (
     BenchmarkResult,
     CanonicalMatrix,
@@ -16,6 +22,7 @@ from ._types import (
     Profile,
     Recommendation,
     RunSample,
+    SolveResult,
     SolveStatus,
     SolverResult,
 )
@@ -28,8 +35,10 @@ __all__ = [
     "MatrixInfo",
     "MatrixInput",
     "Profile",
+    "ProfileMismatchError",
     "Recommendation",
     "RunSample",
+    "SolveResult",
     "SolveStatus",
     "SolverResult",
     "__version__",
@@ -40,4 +49,7 @@ __all__ = [
     "fingerprint_csr",
     "load_matrix",
     "list_backends",
+    "load_profile",
+    "solve",
+    "tune",
 ]
