@@ -1,0 +1,7 @@
+%%MatrixMarket matrix coordinate real symmetric
+% mmread expands the stored lower-triangle entry exactly once.
+3 3 4
+1 1 4.0
+2 1 1.0
+2 2 3.0
+3 3 2.0
