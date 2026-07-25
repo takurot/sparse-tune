@@ -1,6 +1,6 @@
 # sparsetune
 
-> **開発状況:** v0.1.0 リリース準備中
+> **開発状況:** v0.1.0 リリース候補
 > **最終更新:** 2026-07-26
 
 `sparsetune` は、ユーザーの疎行列に対して利用可能な CPU / GPU 線形ソルバを
@@ -265,6 +265,8 @@ Recommender -> Profile Cache / JSON
 
 - [機能仕様書 SPEC v2.1](docs/SPEC.md)
 - [開発ワークフロー](docs/WORKFLOW.md)
+- [v0.1.0 検証レポート](docs/VALIDATION.md)
+- [v0.1.0 リリースノート](RELEASE_NOTES.md)
 
 ## ライセンス
 
