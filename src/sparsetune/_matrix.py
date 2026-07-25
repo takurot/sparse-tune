@@ -78,13 +78,17 @@ def _as_int32(values: np.ndarray[Any, Any], name: str) -> np.ndarray[Any, Any]:
 def _canonical_arrays(
     matrix: Any,
     dtype: np.dtype[Any],
+    *,
+    require_square: bool = True,
 ) -> tuple[
     np.ndarray[Any, Any],
     np.ndarray[Any, Any],
     np.ndarray[Any, Any],
     tuple[int, int],
 ]:
-    if len(matrix.shape) != 2 or matrix.shape[0] != matrix.shape[1]:
+    if len(matrix.shape) != 2 or (
+        require_square and matrix.shape[0] != matrix.shape[1]
+    ):
         raise ValueError("matrix must be square")
 
     _validate_source_dtype(np.dtype(matrix.dtype))
@@ -139,6 +143,7 @@ def fingerprint_csr(matrix: MatrixInput) -> str:
     data, indices, indptr, shape = _canonical_arrays(
         sparse,
         _SUPPORTED_DTYPES["float64"],
+        require_square=False,
     )
     return _fingerprint_arrays(data, indices, indptr, shape)
 
