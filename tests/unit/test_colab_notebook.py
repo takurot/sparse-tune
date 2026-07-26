@@ -85,3 +85,14 @@ def test_readme_links_to_colab_notebook() -> None:
 
     assert "notebooks/colab_gpu_validation.ipynb" in readme
     assert "colab.research.google.com/github/takurot/sparse-tune/blob/main/" in readme
+
+
+def test_colab_notebook_compares_relative_residual_with_rtol() -> None:
+    notebook = _load_notebook()
+    code_source = "\n".join(_sources(notebook, "code"))
+
+    assert 'result["relative_residual"] <= RTOL' in code_source
+    assert (
+        'result["relative_residual"] <= result["convergence_threshold"]'
+        not in code_source
+    )
