@@ -1,6 +1,6 @@
 # sparsetune
 
-> **開発状況:** v0.1.0 リリース候補
+> **開発状況:** v0.1.0
 > **最終更新:** 2026-07-26
 
 `sparsetune` は、ユーザーの疎行列に対して利用可能な CPU / GPU 線形ソルバを
@@ -12,8 +12,9 @@
 バックエンドを選びます。
 
 > [!IMPORTANT]
-> CLI と Python API は実装済みですが、v0.1.0 はまだ PyPI に公開されていません。
-> 現在はソースからインストールして利用してください。
+> v0.1.0 は PyPI から利用できます。実GPUでの機能検証には
+> [Google Colab GPU validation notebook](notebooks/colab_gpu_validation.ipynb)を
+> 使用できます。
 
 ## 主な特徴
 
@@ -41,16 +42,13 @@ v0.1.0 では正方行列のみを対象とし、複素数、密行列形式、�
 
 ## インストール
 
-リポジトリから CPU 版をインストールできます。
+PyPI から CPU 版をインストールできます。
 
 ```bash
-git clone https://github.com/takurot/sparse-tune.git
-cd sparse-tune
-pip install .
+pip install sparsetune
 ```
 
-PyPI 公開後は `pip install sparsetune` でインストールできます。CUDA を利用する場合は、
-環境に合う追加依存関係を指定します。
+CUDA を利用する場合は、環境に合う追加依存関係を指定します。
 
 ```bash
 # CUDA 12.x
@@ -62,6 +60,15 @@ pip install "sparsetune[cuda13]"
 
 必須依存関係は NumPy 1.24 以上と SciPy 1.10 以上です。CuPy は任意依存で、
 `import sparsetune` の時点では GPU 検出などの副作用を発生させません。
+
+### Google Colab でGPU検証
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/takurot/sparse-tune/blob/main/notebooks/colab_gpu_validation.ipynb)
+
+このノートブックはproduction PyPIの `sparsetune==0.1.0` をインストールし、割り当てられた
+NVIDIA GPU上でCPU/GPUの収束、相対残差、計測結果、推奨を検証してJSONへ保存します。
+ColabのGPU、CPU割り当て、クロック、セッション寿命は変動するため、結果は機能検証であり、
+安定した性能ベースラインではありません。
 
 ## クイックスタート
 
@@ -256,8 +263,8 @@ Recommender -> Profile Cache / JSON
 
 | バージョン | 予定内容 |
 | --- | --- |
-| v0.1.0 | リリース準備中: SciPy / CuPy、ネイティブ CG、隔離実行、CLI、プロファイル |
-| v0.1.1 | PyPI 公開、README、CI/CD |
+| v0.1.0 | SciPy / CuPy、ネイティブ CG、隔離実行、CLI、プロファイル |
+| v0.1.1 | README、CI/CD、検証手順の継続改善 |
 | v0.2.0 | PyTorch CUDA、GMRES / BiCGSTAB、メモリ測定改善 |
 | v0.3.0 | MPS 実験対応、統一 CG、AMGX の検討 |
 
@@ -267,6 +274,7 @@ Recommender -> Profile Cache / JSON
 - [開発ワークフロー](docs/WORKFLOW.md)
 - [v0.1.0 検証レポート](docs/VALIDATION.md)
 - [v0.1.0 リリースノート](RELEASE_NOTES.md)
+- [Google Colab GPU validation notebook](notebooks/colab_gpu_validation.ipynb)
 
 ## ライセンス
 
