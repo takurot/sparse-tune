@@ -13,7 +13,7 @@ from sparsetune import (
     SolveStatus,
     SolverResult,
 )
-from sparsetune._cli import main
+from sparsetune._cli import environment_info, main
 
 
 def _solver_result(status: SolveStatus = SolveStatus.CONVERGED) -> SolverResult:
@@ -231,6 +231,35 @@ def test_doctor_and_version_are_available(
         main(["--version"])
     assert version.value.code == 0
     assert capsys.readouterr().out == "0.1.0\n"
+
+
+def test_doctor_reports_validated_backend_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    identities = {
+        "scipy:cpu": {
+            "backend": "scipy:cpu",
+            "kind": "cpu",
+            "scipy_version": "1.14",
+            "cpu_model": "Example CPU",
+            "cpu_cores_physical": 4,
+            "blas_implementation": "OpenBLAS",
+        }
+    }
+    monkeypatch.setattr(
+        "sparsetune._cli.list_backends",
+        lambda: ["scipy:cpu"],
+    )
+    monkeypatch.setattr(
+        "sparsetune._cli._probe_backend",
+        lambda backend, _dtype: (None, identities[backend]),
+    )
+
+    environment = environment_info()
+
+    assert environment["backends"] == ["scipy:cpu"]
+    assert environment["backend_identity"] == identities
+    assert environment["cpu_model"] == "Example CPU"
 
 
 def test_runtime_input_error_goes_only_to_stderr(

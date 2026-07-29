@@ -11,6 +11,7 @@ from scipy import __version__ as scipy_version  # type: ignore[import-untyped]
 from scipy.sparse import csr_matrix  # type: ignore[import-untyped]
 
 from ._backends import UnsupportedBackendError, get_backend
+from ._identity import cpu_identity
 
 
 def probe(backend_id: str, dtype: str) -> bool:
@@ -44,6 +45,7 @@ def identity(backend_id: str) -> dict[str, Any]:
             "backend": backend_id,
             "kind": "cpu",
             "scipy_version": scipy_version,
+            **cpu_identity(),
         }
 
     cupy = backend._cp  # type: ignore[attr-defined]

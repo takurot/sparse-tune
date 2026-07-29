@@ -17,6 +17,7 @@ from typing import Any, Iterable, Mapping, Sequence
 import numpy as np
 from scipy import __version__ as scipy_version  # type: ignore[import-untyped]
 
+from ._identity import cpu_identity
 from ._inspect import diagnose_matrix, is_cg_eligible
 from ._matrix import canonicalize_matrix
 from ._runner import canonicalize_rhs, run_backend_in_subprocess
@@ -50,10 +51,26 @@ def _valid_backend_identity(identity: Any, backend_id: str) -> bool:
     if not isinstance(identity, dict) or identity.get("backend") != backend_id:
         return False
     if backend_id == "scipy:cpu":
+        optional = ("cpu_model", "cpu_cores_physical", "blas_implementation")
         return (
-            set(identity) == {"backend", "kind", "scipy_version"}
+            set(identity) == {"backend", "kind", "scipy_version", *optional}
             and identity["kind"] == "cpu"
             and isinstance(identity["scipy_version"], str)
+            and (
+                identity["cpu_model"] is None or isinstance(identity["cpu_model"], str)
+            )
+            and (
+                identity["cpu_cores_physical"] is None
+                or (
+                    isinstance(identity["cpu_cores_physical"], int)
+                    and not isinstance(identity["cpu_cores_physical"], bool)
+                    and identity["cpu_cores_physical"] > 0
+                )
+            )
+            and (
+                identity["blas_implementation"] is None
+                or isinstance(identity["blas_implementation"], str)
+            )
         )
     expected = {
         "backend",
@@ -230,10 +247,21 @@ def _environment(
         except metadata.PackageNotFoundError:
             continue
     identities = dict(backend_identity or {})
+    cpu = cpu_identity()
+    reported_cpu = identities.get("scipy:cpu")
+    if isinstance(reported_cpu, dict):
+        cpu = {
+            name: reported_cpu.get(name)
+            for name in (
+                "cpu_model",
+                "cpu_cores_physical",
+                "blas_implementation",
+            )
+        }
     return {
         "os": platform.platform(),
         "python": platform.python_version(),
-        "cpu_model": platform.processor(),
+        **cpu,
         "cpu_cores": os.cpu_count(),
         "numpy": np.__version__,
         "scipy": scipy_version,

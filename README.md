@@ -274,6 +274,13 @@ Recommender -> Profile Cache / JSON
 検証済みのプローブサブプロセスから取得します。明示的な環境診断である
 `list_backends()` と `sparsetune doctor` だけは、呼び出し元プロセスでCUDAを検出します。
 
+doctor、benchmark JSON、profile JSON は同じ実行環境fieldを使用します。CPUは
+`cpu_model`、`cpu_cores_physical`、`blas_implementation`、SciPy versionを、
+GPUは `gpu_uuid`、`gpu_model`、`cuda_driver`、`cuda_runtime`、`cupy_version` を
+backend identityとして記録します。取得できないportable fieldは `null` です。
+選択backendのidentity変更はprofile mismatch、Python/NumPy/SciPy/CPU/BLAS変更は
+明示的なstale-profile opt-inが必要です。
+
 ## ロードマップ
 
 | バージョン | 予定内容 |
