@@ -3,7 +3,6 @@ from __future__ import annotations
 import numpy as np
 import pytest
 from scipy.sparse import csr_matrix, diags
-from scipy.sparse.linalg import cg
 
 import sparsetune._backends as backends
 from sparsetune._backends import (
@@ -63,6 +62,50 @@ def test_scipy_backend_preserves_native_info_for_classification() -> None:
 
     assert native.info == 1
     assert native.iterations == 1
+
+
+def test_scipy_backend_supports_legacy_tol_signature(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, object]] = []
+
+    def legacy_cg(
+        matrix: object,
+        rhs: object,
+        *,
+        tol: float,
+        atol: float,
+        maxiter: int,
+        callback: object,
+    ) -> tuple[np.ndarray, int]:
+        calls.append(
+            {
+                "tol": tol,
+                "atol": atol,
+                "maxiter": maxiter,
+                "callback": callback,
+            }
+        )
+        return np.ones(2), 0
+
+    monkeypatch.setattr(backends, "cg", legacy_cg)
+    backend = SciPyBackend()
+    prepared = backend.prepare(
+        csr_matrix(np.eye(2)),
+        np.ones(2),
+        dtype="float64",
+    )
+
+    backend.solve_prepared(
+        prepared,
+        rtol=1.0e-6,
+        atol=1.0e-9,
+        max_iter=20,
+    )
+
+    assert calls[0]["tol"] == 1.0e-6
+    assert calls[0]["atol"] == 1.0e-9
+    assert calls[0]["maxiter"] == 20
 
 
 def test_scipy_synchronize_and_release_are_safe_no_ops() -> None:
@@ -143,7 +186,11 @@ class _FakeCupyLinalg:
 
     def cg(self, matrix: object, rhs: object, **kwargs: object) -> object:
         self.calls.append(kwargs.copy())
-        return cg(matrix, rhs, **kwargs)
+        solution = np.linalg.solve(matrix.toarray(), rhs)
+        callback = kwargs.get("callback")
+        if callable(callback):
+            callback(solution)
+        return solution, 0
 
 
 def _install_fake_cupy(
