@@ -151,10 +151,13 @@ def fingerprint_csr(matrix: MatrixInput) -> str:
 def _canonicalize_sparse(
     matrix: Any,
     dtype: np.dtype[Any],
+    *,
+    require_square: bool = True,
 ) -> CanonicalMatrix:
     normalized_data, indices, indptr, shape = _canonical_arrays(
         matrix,
         _SUPPORTED_DTYPES["float64"],
+        require_square=require_square,
     )
     data = np.asarray(normalized_data, dtype=dtype).copy()
     if not np.all(np.isfinite(data)):
@@ -173,15 +176,20 @@ def _canonicalize_sparse(
     )
 
 
-def load_matrix(path: str | Path) -> CanonicalMatrix:
-    """Load a supported Matrix Market file into canonical float64 CSR form."""
-
+def _load_matrix(path: str | Path, *, require_square: bool) -> CanonicalMatrix:
     matrix_path = Path(path)
     _validate_matrix_market_header(matrix_path)
     return _canonicalize_sparse(
         mmread(matrix_path),
         _SUPPORTED_DTYPES["float64"],
+        require_square=require_square,
     )
+
+
+def load_matrix(path: str | Path) -> CanonicalMatrix:
+    """Load a supported square Matrix Market file into canonical float64 CSR form."""
+
+    return _load_matrix(path, require_square=True)
 
 
 def ensure_canonical_matrix(matrix: MatrixInput) -> CanonicalMatrix:

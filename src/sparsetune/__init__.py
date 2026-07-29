@@ -7,7 +7,7 @@ from ._matrix import (
     fingerprint_csr,
     load_matrix,
 )
-from ._inspect import diagnose_matrix
+from ._inspect import diagnose_matrix, inspect
 from ._profile import (
     ProfileMismatchError,
     load_profile,
@@ -47,6 +47,7 @@ __all__ = [
     "diagnose_matrix",
     "ensure_canonical_matrix",
     "fingerprint_csr",
+    "inspect",
     "load_matrix",
     "list_backends",
     "load_profile",
