@@ -206,7 +206,7 @@ sparsetune bench <matrix_file> [options]
 
 | モード | 計測対象 |
 |--------|---------|
-| `end-to-end` | 変換＋転送＋前処理＋solve＋結果転送。一回解く場合の実時間 |
+| `end-to-end` | backend準備＋solve＋同期＋結果取得。正規化済み行列を一回解く場合のworker内実時間 |
 | `steady-state` | solve のみ。行列と前処理はデバイス上に保持済みの前提 |
 
 ### 4.3 `tune` コマンド
@@ -751,8 +751,21 @@ def diagnose_matrix(A: scipy.sparse.csr_matrix) -> MatrixInfo:
 
 | モード | 含むもの | 含まないもの |
 |--------|---------|------------|
-| `end-to-end` | CSR 正規化 + Host→Device 転送 + 前処理 setup + solve + Device→Host 転送 | 行列ファイル読み込み |
-| `steady-state` | solve のみ | 転送・前処理（デバイス上に保持済み前提） |
+| `end-to-end` | backend準備（GPUではHost→Device転送を含む）+ solve + 同期 + 解の取得 | ファイル読込、CSR正規化、RHS生成、warmup |
+| `steady-state` | solve + 同期 | backend準備、解の取得、ファイル読込、CSR正規化、RHS生成、warmup |
+
+入力の読込、CSR正規化、RHS生成は親プロセスで一度だけ行い、backend間で共有するため
+計測外とする。workerが返す各sampleでは、`setup_seconds` はbackend準備、
+`solve_seconds` はnative solveと完了同期、`transfer_seconds` は同期後の解の取得、
+`total_seconds` はsetup開始から解の取得完了までを表す。したがって
+end-to-end sampleでは `total_seconds >= setup_seconds + solve_seconds +
+transfer_seconds`、steady-state sampleではsetupを0として
+`total_seconds >= solve_seconds + transfer_seconds` となる。差分はtimer呼出しなどの
+worker内処理時間である。steady-stateの比較には `solve_seconds` を使うため、
+解の取得は順位に含めない。
+
+各要求モードの直前に1回だけwarmupし、warmupの準備、求解、同期、解放はすべて
+計測から除外する。
 
 ### 9.2 タイミングフロー（バックエンドネイティブ CG 使用）
 
@@ -838,8 +851,25 @@ def recommend(results: list[SolverResult]) -> dict:
 ### 9.6 複数試行
 
 - デフォルト 5 回実行、**中央値**を採用
-- 各試行前にバックエンドメモリを解放（サブプロセスなのでプロセス終了＝完全解放）
-- サブプロセス単位なのでメモリ干渉は原理的に発生しない
+- end-to-endは各試行後にprepared stateを解放し、steady-stateは全試行で保持する
+- backend worker終了時にプロセス単位でメモリを解放する
+
+推奨では、end-to-endは各sampleの `total_seconds`、steady-stateは
+`solve_seconds` の中央値を使う。あるモードの全sampleが `converged` の場合だけ
+そのbackendを同モードの候補とし、1件でも失敗したモードは候補外とする。
+一方のモードの失敗は他方の候補資格に影響しない。
+
+backend単位のtop-level statusは後方互換の要約で、全sampleが収束した場合は
+`converged`、それ以外は要求モード・試行順で最初の失敗statusとする。top-levelの
+`transfer_seconds`、`setup_seconds`、`total_seconds` はend-to-end（未計測なら
+利用可能なモード）のtotal中央値に最も近いsampleから取り、`solve_seconds` は
+steady-state（未計測なら利用可能なモード）のsolve中央値に最も近いsampleから取る。
+モード別の判断では必ずraw `samples` を正とする。
+
+GPUの `break_even_solves` は、GPUの
+`end-to-end - steady-state` を初期overhead、CPUとGPUのsteady-state差を1回あたりの
+節約として割り、切り上げた値である。最初の求解を1回目と数えるため最小値は1とする。
+比較可能な収束CPU結果がない場合、またはGPUに1回あたりの節約がない場合は `null`。
 
 ---
 

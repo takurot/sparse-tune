@@ -153,6 +153,7 @@ def _end_to_end_samples(
     rhs: NDArray[np.floating[Any]],
     config: dict[str, Any],
 ) -> list[RunSample]:
+    _warmup(backend, matrix, rhs, config)
     samples = []
     for _ in range(config["runs"]):
         total_start = time.perf_counter()
@@ -298,7 +299,6 @@ def run_worker(
     matrix = matrix.astype(dtype, copy=False)
     rhs = np.asarray(rhs, dtype=dtype)
     backend = get_backend(backend_id)
-    _warmup(backend, matrix, rhs, config)
 
     samples = []
     if "end-to-end" in config["measure"]:
