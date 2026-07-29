@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from sparsetune import (
@@ -212,7 +213,97 @@ def test_solve_selection_is_exclusive_and_failures_have_stable_exit(
     assert both.value.code == 2
 
     assert main(["solve", "matrix.mtx", "--backend", "scipy:cpu"]) == 3
-    assert json.loads(capsys.readouterr().out)["status"] == "max_iter"
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "max_iter"
+    assert "x" not in payload
+
+
+def test_solve_prints_bounded_metrics_and_writes_solution(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    result = SolveResult(
+        x=np.arange(100_000, dtype=np.float64),
+        backend="scipy:cpu",
+        dtype="float64",
+        status=SolveStatus.CONVERGED,
+        iterations=2,
+        residual_norm=0.0,
+        relative_residual=0.0,
+        convergence_threshold=1.0e-6,
+        setup_seconds=0.01,
+        solve_seconds=0.02,
+        total_seconds=0.03,
+        error=None,
+    )
+    output = tmp_path / "solution.mtx"
+
+    def fake_solve(*_args: object, **kwargs: object) -> SolveResult:
+        assert kwargs["output"] == output
+        output.write_text(
+            "%%MatrixMarket matrix array real general\n", encoding="utf-8"
+        )
+        return result
+
+    monkeypatch.setattr("sparsetune._cli.solve", fake_solve)
+
+    assert (
+        main(
+            [
+                "solve",
+                "matrix.mtx",
+                "--backend",
+                "scipy:cpu",
+                "--output",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert "x" not in payload
+    assert payload["status"] == "converged"
+    assert len(captured.out) < 1_000
+    assert output.is_file()
+
+
+def test_solve_quiet_suppresses_metrics_output(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    result = SolveResult(
+        x=np.asarray([1.0, 1.0]),
+        backend="scipy:cpu",
+        dtype="float64",
+        status=SolveStatus.CONVERGED,
+        iterations=2,
+        residual_norm=0.0,
+        relative_residual=0.0,
+        convergence_threshold=1.0e-6,
+        setup_seconds=0.01,
+        solve_seconds=0.02,
+        total_seconds=0.03,
+        error=None,
+    )
+    monkeypatch.setattr("sparsetune._cli.solve", lambda *_a, **_k: result)
+
+    assert (
+        main(
+            [
+                "solve",
+                "matrix.mtx",
+                "--backend",
+                "scipy:cpu",
+                "--quiet",
+            ]
+        )
+        == 0
+    )
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
 
 
 def test_doctor_and_version_are_available(

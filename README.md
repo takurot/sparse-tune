@@ -114,6 +114,12 @@ sparsetune solve model.mtx \
 `--profile` の代わりに `--backend scipy:cpu` のようにバックエンドを直接指定することも
 できます。
 
+CLIのstdoutには、成功・失敗とも解ベクトルを含まない小さなJSON metrics
+（status、残差、反復回数、計測時間など）を出力します。解ベクトルは `--output`
+指定時だけMatrix Market fileへ保存され、stdoutへ重複出力されません。
+`--quiet` はprogressとmetricsを抑制し、結果はexit codeで判定できます。
+Python APIの `SolveResult.x` は引き続き完全な解ベクトルを保持します。
+
 ## CLI
 
 | コマンド | 説明 |

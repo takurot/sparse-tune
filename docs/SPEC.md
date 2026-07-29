@@ -267,11 +267,22 @@ sparsetune solve <matrix_file> --profile <profile.json> [options]
 | `--backend` | str | — | バックエンド直接指定（--profile と排他） |
 | `--rhs` | path | 自動生成 | 右辺ベクトル（Matrix Market N×1）。省略時は ones 解で生成 |
 | `--selection-mode` | str | `end-to-end` | プロファイル内の推奨選択: `end-to-end`, `steady-state` |
-| `--output` | path | stdout | 解ベクトル出力（Matrix Market） |
+| `--output` | path | なし | 解ベクトル出力（Matrix Market） |
 | `--rtol` | float | 1e-6 | 相対収束許容値 |
 | `--atol` | float | 0.0 | 絶対収束許容値 |
 | `--max-iter` | int | 10000 | 最大反復回数 |
 | `--assume-spd` | flag | false | SPD と仮定して CG を実行 |
+| `--quiet` | flag | false | progressとstdout metricsを抑制 |
+
+`solve` のstdoutは、成功・失敗とも解ベクトル `x` を含まない1件のJSON metricsである。
+`backend`、`dtype`、`status`、反復回数、残差、閾値、計測時間、`error` を含むため、
+大規模解を読み込まずに機械処理できる。解ベクトルが必要なCLI利用では `--output` を
+指定し、Matrix Market fileへ分離して保存する。`--output` の有無にかかわらずstdout
+へ解を複製しない。`--output` なしでは解はfileへ保存されない。
+
+`--quiet` はprogressとmetricsの両方を抑制するが、exit codeは維持する。
+収束は0、入力エラーは2、数値的失敗やworker失敗は3である。Python APIの
+`SolveResult.x` と `SolveResult.to_json()` は従来どおり完全な解を保持する。
 
 ### 4.5 `inspect` コマンド
 
