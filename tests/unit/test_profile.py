@@ -16,6 +16,7 @@ from sparsetune import (
     Recommendation,
     SolveStatus,
     SolverResult,
+    benchmark,
     load_profile,
     solve,
     tune,
@@ -317,6 +318,116 @@ def test_solve_requires_exactly_one_backend_selection() -> None:
         solve(matrix)
     with pytest.raises(ValueError, match="exactly one"):
         solve(matrix, profile=_profile(matrix), backend="scipy:cpu")
+
+
+@pytest.mark.parametrize(
+    ("options", "message"),
+    [
+        ({"dtype": "float16"}, "dtype"),
+        ({"rtol": -1.0}, "rtol"),
+        ({"rtol": np.nan}, "rtol"),
+        ({"atol": -1.0}, "atol"),
+        ({"atol": np.inf}, "atol"),
+        ({"max_iter": 0}, "max_iter"),
+        ({"max_iter": 1.5}, "max_iter"),
+        ({"max_iter": True}, "max_iter"),
+        ({"timeout": 0.0}, "timeout"),
+        ({"timeout": np.inf}, "timeout"),
+    ],
+)
+def test_solve_rejects_invalid_options_before_processing(
+    monkeypatch: pytest.MonkeyPatch,
+    options: dict[str, object],
+    message: str,
+) -> None:
+    def unexpected(*_args: object, **_kwargs: object) -> None:
+        pytest.fail(
+            "invalid solve options must fail before matrix or worker processing"
+        )
+
+    monkeypatch.setattr("sparsetune._profile.diagnose_matrix", unexpected)
+    monkeypatch.setattr("sparsetune._profile.run_solve_in_subprocess", unexpected)
+
+    with pytest.raises(ValueError, match=message):
+        solve(
+            object(),  # type: ignore[arg-type]
+            backend="scipy:cpu",
+            **options,  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("dtype", None),
+        ("dtype", "float16"),
+        ("rtol", None),
+        ("rtol", "invalid"),
+        ("rtol", -1.0),
+        ("rtol", np.nan),
+        ("atol", []),
+        ("atol", np.inf),
+        ("max_iter", 0),
+        ("max_iter", 1.5),
+        ("max_iter", True),
+    ],
+)
+def test_solve_rejects_malformed_profile_config_before_processing(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    value: object,
+) -> None:
+    matrix = csr_matrix([[4.0, 1.0], [1.0, 3.0]])
+    profile = _profile(matrix)
+    profile["config"][field] = value
+    monkeypatch.setattr(
+        "sparsetune._profile.diagnose_matrix",
+        lambda *_args, **_kwargs: pytest.fail(
+            "malformed profile must fail before matrix processing"
+        ),
+    )
+
+    with pytest.raises(ProfileMismatchError, match="configuration"):
+        solve(object(), profile=profile)  # type: ignore[arg-type]
+
+
+def test_solve_requires_all_profile_config_fields() -> None:
+    matrix = csr_matrix([[4.0, 1.0], [1.0, 3.0]])
+    profile = _profile(matrix)
+    del profile["config"]["rtol"]
+
+    with pytest.raises(ProfileMismatchError, match="configuration"):
+        solve(matrix, profile=profile)
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"dtype": "float16"},
+        {"rtol": -1.0},
+        {"atol": np.inf},
+        {"max_iter": 0},
+        {"max_iter": 1.5},
+        {"timeout": 0.0},
+    ],
+)
+def test_benchmark_and_solve_option_validation_match(
+    options: dict[str, object],
+) -> None:
+    with pytest.raises(ValueError) as benchmark_error:
+        benchmark(
+            object(),  # type: ignore[arg-type]
+            backends=["scipy:cpu"],
+            **options,  # type: ignore[arg-type]
+        )
+    with pytest.raises(ValueError) as solve_error:
+        solve(
+            object(),  # type: ignore[arg-type]
+            backend="scipy:cpu",
+            **options,  # type: ignore[arg-type]
+        )
+
+    assert str(solve_error.value) == str(benchmark_error.value)
 
 
 def test_explicit_scipy_solve_writes_matrix_market_solution(tmp_path: Path) -> None:
