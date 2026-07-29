@@ -111,6 +111,9 @@ def test_tune_save_load_round_trip(
     assert profile == load_profile(output)
     assert profile["schema_version"] == "1.0"
     assert profile["config"]["runs"] == 2
+    report = _report(matrix)
+    for key, value in report.to_dict().items():
+        assert profile[key] == value
     assert json.loads(output.read_text(encoding="utf-8")) == profile
 
 

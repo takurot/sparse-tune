@@ -201,15 +201,8 @@ def tune(
         else:
             raise ProfileMismatchError(f"Backend identity is missing: {result.backend}")
     profile: Profile = {
-        "schema_version": _SCHEMA_VERSION,
-        "matrix": {**report.matrix.to_dict(), "dtype": dtype},
-        "environment": report.environment,
+        **report.to_dict(),
         "config": config,
-        "results": [result.to_dict() for result in report.results],
-        "recommendations": {
-            key: recommendation.to_dict()
-            for key, recommendation in report.recommendations.items()
-        },
         "backend_identity": backend_identity,
     }
     if output is not None:

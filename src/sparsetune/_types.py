@@ -149,6 +149,19 @@ class BenchmarkResult(_Serializable):
     environment: dict[str, Any]
     results: list[SolverResult]
     recommendations: dict[str, Recommendation]
+    dtype: str = "float64"
+    schema_version: str = "1.0"
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return the authoritative versioned benchmark payload."""
+
+        return {
+            "schema_version": self.schema_version,
+            "matrix": {**self.matrix.to_dict(), "dtype": self.dtype},
+            "environment": _json_value(self.environment),
+            "results": _json_value(self.results),
+            "recommendations": _json_value(self.recommendations),
+        }
 
     def best(self, mode: str = "end-to-end") -> SolverResult | None:
         """Return the result selected for a measurement mode."""

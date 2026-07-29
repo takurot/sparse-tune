@@ -116,7 +116,7 @@ def test_bench_formats_stay_on_stdout(
     captured = capsys.readouterr()
     assert exit_code == 0
     if output_format == "json":
-        assert json.loads(captured.out)["results"][0]["backend"] == "scipy:cpu"
+        assert json.loads(captured.out) == _report().to_dict()
     elif output_format == "csv":
         assert captured.out.startswith("backend,status")
     else:
