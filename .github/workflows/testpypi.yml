@@ -31,6 +31,8 @@ jobs:
           "${RUNNER_TEMP}/testpypi-venv/bin/python" -m pip install
           --index-url https://test.pypi.org/simple/
           --no-deps
-          sparsetune==${{ steps.package.outputs.version }}
+          "sparsetune==${VERSION}"
+        env:
+          VERSION: ${{ steps.package.outputs.version }}
       - run: '"${RUNNER_TEMP}/testpypi-venv/bin/sparsetune" --version'
       - run: '"${RUNNER_TEMP}/testpypi-venv/bin/python" -m pip check'
