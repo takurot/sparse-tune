@@ -7,6 +7,7 @@ import json
 import math
 from pathlib import Path
 import re
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -150,13 +151,17 @@ def _is_number(value: Any) -> bool:
         return False
 
 
+def _is_non_negative_number(value: Any) -> bool:
+    return _is_number(value) and float(value) >= 0.0
+
+
 def _parse_sample(payload: Any) -> RunSample:
     if not isinstance(payload, dict):
         raise ValueError
     expected = {item.name for item in fields(RunSample)}
     if set(payload) != expected:
         raise ValueError
-    if not isinstance(payload["measure"], str):
+    if payload["measure"] not in {"end-to-end", "steady-state"}:
         raise ValueError
     for name in (
         "transfer_seconds",
@@ -166,21 +171,23 @@ def _parse_sample(payload: Any) -> RunSample:
         "residual_norm",
         "convergence_threshold",
     ):
-        if not _is_number(payload[name]):
+        if not _is_non_negative_number(payload[name]):
             raise ValueError
-    if not isinstance(payload["iterations"], int) or isinstance(
-        payload["iterations"], bool
+    if (
+        not isinstance(payload["iterations"], int)
+        or isinstance(payload["iterations"], bool)
+        or payload["iterations"] < 0
     ):
         raise ValueError
     relative = payload["relative_residual"]
     pool_used = payload["pool_used_gb"]
-    if relative is not None and not _is_number(relative):
+    if relative is not None and not _is_non_negative_number(relative):
         raise ValueError
-    if pool_used is not None and not _is_number(pool_used):
+    if pool_used is not None and not _is_non_negative_number(pool_used):
         raise ValueError
     if payload["error"] is not None and not isinstance(payload["error"], str):
         raise ValueError
-    return RunSample(
+    sample = RunSample(
         measure=payload["measure"],
         transfer_seconds=float(payload["transfer_seconds"]),
         setup_seconds=float(payload["setup_seconds"]),
@@ -194,9 +201,107 @@ def _parse_sample(payload: Any) -> RunSample:
         error=payload["error"],
         pool_used_gb=None if pool_used is None else float(pool_used),
     )
+    if sample.total_seconds < (
+        sample.setup_seconds + sample.solve_seconds + sample.transfer_seconds
+    ):
+        raise ValueError
+    if sample.measure == "steady-state" and sample.setup_seconds != 0.0:
+        raise ValueError
+    if sample.status is SolveStatus.CONVERGED and sample.error is not None:
+        raise ValueError
+    return sample
 
 
-def _parse_result(payload: Any, backend_id: str) -> SolverResult:
+def _median_sample(samples: list[RunSample], field: str) -> RunSample:
+    target = statistics.median(float(getattr(sample, field)) for sample in samples)
+    return min(samples, key=lambda sample: abs(float(getattr(sample, field)) - target))
+
+
+def _validate_aggregate(result: SolverResult) -> None:
+    if not result.samples:
+        if (
+            result.status
+            not in {
+                SolveStatus.OOM,
+                SolveStatus.UNSUPPORTED,
+                SolveStatus.INTERNAL_ERROR,
+            }
+            or not result.error
+            or result.solver_impl
+            or (
+                result.transfer_seconds,
+                result.setup_seconds,
+                result.solve_seconds,
+                result.total_seconds,
+                result.iterations,
+                result.residual_norm,
+                result.convergence_threshold,
+            )
+            != (0.0, 0.0, 0.0, 0.0, 0, 0.0, 0.0)
+            or result.relative_residual is not None
+            or result.pool_used_gb is not None
+        ):
+            raise ValueError
+        return
+
+    end_to_end = [sample for sample in result.samples if sample.measure == "end-to-end"]
+    steady_state = [
+        sample for sample in result.samples if sample.measure == "steady-state"
+    ]
+    primary = _median_sample(end_to_end or steady_state, "total_seconds")
+    solve_sample = _median_sample(steady_state or end_to_end, "solve_seconds")
+    failure = next(
+        (
+            sample
+            for sample in result.samples
+            if sample.status is not SolveStatus.CONVERGED
+        ),
+        None,
+    )
+    accuracy_sample = failure or primary
+    if (
+        not result.solver_impl
+        or (
+            result.transfer_seconds,
+            result.setup_seconds,
+            result.total_seconds,
+        )
+        != (
+            primary.transfer_seconds,
+            primary.setup_seconds,
+            primary.total_seconds,
+        )
+        or result.solve_seconds != solve_sample.solve_seconds
+        or (
+            result.iterations,
+            result.residual_norm,
+            result.relative_residual,
+            result.convergence_threshold,
+            result.pool_used_gb,
+            result.status,
+            result.error,
+        )
+        != (
+            accuracy_sample.iterations,
+            accuracy_sample.residual_norm,
+            accuracy_sample.relative_residual,
+            accuracy_sample.convergence_threshold,
+            accuracy_sample.pool_used_gb,
+            accuracy_sample.status,
+            accuracy_sample.error,
+        )
+    ):
+        raise ValueError
+
+
+def _parse_result(
+    payload: Any,
+    backend_id: str,
+    *,
+    expected_dtype: str | None = None,
+    expected_measures: list[str] | None = None,
+    expected_runs: int | None = None,
+) -> SolverResult:
     if not isinstance(payload, dict):
         raise ValueError
     expected = {item.name for item in fields(SolverResult)}
@@ -205,6 +310,10 @@ def _parse_result(payload: Any, backend_id: str) -> SolverResult:
     for name in ("backend", "solver_impl", "dtype"):
         if not isinstance(payload[name], str):
             raise ValueError
+    if payload["dtype"] not in _SUPPORTED_DTYPES:
+        raise ValueError
+    if expected_dtype is not None and payload["dtype"] != expected_dtype:
+        raise ValueError
     for name in (
         "transfer_seconds",
         "setup_seconds",
@@ -213,24 +322,26 @@ def _parse_result(payload: Any, backend_id: str) -> SolverResult:
         "residual_norm",
         "convergence_threshold",
     ):
-        if not _is_number(payload[name]):
+        if not _is_non_negative_number(payload[name]):
             raise ValueError
-    if not isinstance(payload["iterations"], int) or isinstance(
-        payload["iterations"], bool
+    if (
+        not isinstance(payload["iterations"], int)
+        or isinstance(payload["iterations"], bool)
+        or payload["iterations"] < 0
     ):
         raise ValueError
     relative = payload["relative_residual"]
     pool_used = payload["pool_used_gb"]
-    if relative is not None and not _is_number(relative):
+    if relative is not None and not _is_non_negative_number(relative):
         raise ValueError
-    if pool_used is not None and not _is_number(pool_used):
+    if pool_used is not None and not _is_non_negative_number(pool_used):
         raise ValueError
     if payload["error"] is not None and not isinstance(payload["error"], str):
         raise ValueError
     if not isinstance(payload["samples"], list):
         raise ValueError
 
-    return SolverResult(
+    result = SolverResult(
         backend=payload["backend"],
         solver_impl=payload["solver_impl"],
         dtype=payload["dtype"],
@@ -247,6 +358,14 @@ def _parse_result(payload: Any, backend_id: str) -> SolverResult:
         error=payload["error"],
         samples=[_parse_sample(sample) for sample in payload["samples"]],
     )
+    if result.samples and expected_measures is not None and expected_runs is not None:
+        if any(
+            sum(sample.measure == measure for sample in result.samples) != expected_runs
+            for measure in expected_measures
+        ) or any(sample.measure not in expected_measures for sample in result.samples):
+            raise ValueError
+    _validate_aggregate(result)
+    return result
 
 
 def run_backend_in_subprocess(
@@ -311,7 +430,13 @@ def run_backend_in_subprocess(
 
         try:
             payload = json.loads(result_path.read_text(encoding="utf-8"))
-            return _parse_result(payload, backend_id)
+            return _parse_result(
+                payload,
+                backend_id,
+                expected_dtype=config.get("dtype"),
+                expected_measures=config.get("measure"),
+                expected_runs=config.get("runs"),
+            )
         except (OSError, UnicodeError, json.JSONDecodeError, ValueError, TypeError):
             return _error_result(
                 backend_id,
@@ -395,7 +520,13 @@ def run_solve_in_subprocess(
 
         try:
             payload = json.loads(result_path.read_text(encoding="utf-8"))
-            result = _parse_result(payload, backend_id)
+            result = _parse_result(
+                payload,
+                backend_id,
+                expected_dtype=config.get("dtype"),
+                expected_measures=["end-to-end"],
+                expected_runs=1,
+            )
             if not solution_path.is_file():
                 if result.status in {
                     SolveStatus.OOM,
@@ -403,6 +534,12 @@ def run_solve_in_subprocess(
                     SolveStatus.INTERNAL_ERROR,
                 }:
                     return result, None
+                raise ValueError
+            if result.status in {
+                SolveStatus.OOM,
+                SolveStatus.UNSUPPORTED,
+                SolveStatus.INTERNAL_ERROR,
+            }:
                 raise ValueError
             solution = np.load(solution_path, allow_pickle=False)
             if (

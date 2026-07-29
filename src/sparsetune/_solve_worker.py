@@ -46,7 +46,7 @@ def _read_config(path: Path) -> dict[str, Any]:
     return payload
 
 
-def _error_result(backend_id: str, status: SolveStatus) -> SolverResult:
+def _error_result(backend_id: str, status: SolveStatus, dtype: str) -> SolverResult:
     messages = {
         SolveStatus.OOM: "Backend ran out of memory",
         SolveStatus.UNSUPPORTED: "Backend is unavailable",
@@ -55,7 +55,7 @@ def _error_result(backend_id: str, status: SolveStatus) -> SolverResult:
     return SolverResult(
         backend=backend_id,
         solver_impl="",
-        dtype="",
+        dtype=dtype,
         transfer_seconds=0.0,
         setup_seconds=0.0,
         solve_seconds=0.0,
@@ -162,6 +162,12 @@ def _parse_args() -> argparse.Namespace:
 def main() -> int:
     args = _parse_args()
     try:
+        payload = json.loads(args.config.read_text(encoding="utf-8"))
+        requested_dtype = payload.get("dtype") if isinstance(payload, dict) else None
+        dtype = requested_dtype if requested_dtype in {"float32", "float64"} else ""
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        dtype = ""
+    try:
         result, solution = solve_once(
             args.backend,
             args.matrix_npz,
@@ -170,7 +176,7 @@ def main() -> int:
         )
         np.save(args.solution, solution, allow_pickle=False)
     except Exception as error:
-        result = _error_result(args.backend, status_for_exception(error))
+        result = _error_result(args.backend, status_for_exception(error), dtype)
     args.result.write_text(result.to_json(), encoding="utf-8")
     return 0
 
