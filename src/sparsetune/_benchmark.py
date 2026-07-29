@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 from importlib import metadata
+import json
 import math
 import os
 from pathlib import Path
@@ -11,7 +12,7 @@ import platform
 import subprocess
 import sys
 import tempfile
-from typing import Any, Iterable, Sequence
+from typing import Any, Iterable, Mapping, Sequence
 
 import numpy as np
 from scipy import __version__ as scipy_version  # type: ignore[import-untyped]
@@ -45,8 +46,43 @@ def list_backends() -> list[str]:
     return backends
 
 
-def _probe_backend(backend_id: str, dtype: str) -> str | None:
-    """Exercise a tiny solve in isolation and return a stable diagnostic."""
+def _valid_backend_identity(identity: Any, backend_id: str) -> bool:
+    if not isinstance(identity, dict) or identity.get("backend") != backend_id:
+        return False
+    if backend_id == "scipy:cpu":
+        return (
+            set(identity) == {"backend", "kind", "scipy_version"}
+            and identity["kind"] == "cpu"
+            and isinstance(identity["scipy_version"], str)
+        )
+    expected = {
+        "backend",
+        "kind",
+        "gpu_uuid",
+        "gpu_model",
+        "cuda_driver",
+        "cuda_runtime",
+        "cupy_version",
+    }
+    return (
+        set(identity) == expected
+        and identity["kind"] == "cuda"
+        and all(
+            isinstance(identity[name], str) and bool(identity[name])
+            for name in ("gpu_uuid", "gpu_model", "cupy_version")
+        )
+        and all(
+            isinstance(identity[name], int) and not isinstance(identity[name], bool)
+            for name in ("cuda_driver", "cuda_runtime")
+        )
+    )
+
+
+def _probe_backend(
+    backend_id: str,
+    dtype: str,
+) -> tuple[str | None, dict[str, Any] | None]:
+    """Exercise a tiny solve and collect validated identity in isolation."""
 
     command = [
         sys.executable,
@@ -65,12 +101,18 @@ def _probe_backend(backend_id: str, dtype: str) -> str | None:
             timeout=30.0,
         )
     except (OSError, subprocess.TimeoutExpired):
-        return "Backend capability probe failed"
+        return "Backend capability probe failed", None
     if completed.returncode == 0:
-        return None
+        try:
+            identity = json.loads(completed.stdout)
+        except json.JSONDecodeError:
+            return "Backend capability probe returned malformed identity", None
+        if not _valid_backend_identity(identity, backend_id):
+            return "Backend capability probe returned malformed identity", None
+        return None, identity
     if completed.returncode == 2:
-        return "Backend is unavailable"
-    return "Backend capability probe failed"
+        return "Backend is unavailable", None
+    return "Backend capability probe failed", None
 
 
 def _unsupported_result(backend_id: str, dtype: str, error: str) -> SolverResult:
@@ -169,13 +211,16 @@ def recommend(results: Sequence[SolverResult]) -> dict[str, Recommendation]:
     return recommendations
 
 
-def _environment() -> dict[str, Any]:
+def _environment(
+    backend_identity: Mapping[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     packages: dict[str, str | None] = {}
     for name in ("cupy-cuda12x", "cupy-cuda13x"):
         try:
             packages[name] = metadata.version(name)
         except metadata.PackageNotFoundError:
             continue
+    identities = dict(backend_identity or {})
     return {
         "os": platform.platform(),
         "python": platform.python_version(),
@@ -184,9 +229,12 @@ def _environment() -> dict[str, Any]:
         "numpy": np.__version__,
         "scipy": scipy_version,
         "gpu_backends": [
-            backend for backend in list_backends() if backend.startswith("cupy:")
+            backend
+            for backend, identity in identities.items()
+            if identity.get("kind") == "cuda"
         ],
         "gpu_packages": packages,
+        "backend_identity": identities,
     }
 
 
@@ -271,13 +319,16 @@ def benchmark(
             "measure": modes,
         }
         results = []
+        backend_identity: dict[str, dict[str, Any]] = {}
         for backend_id in requested:
-            probe_error = _probe_backend(backend_id, dtype)
+            probe_error, identity = _probe_backend(backend_id, dtype)
             if probe_error is not None:
                 results.append(
                     _unsupported_result(backend_id, dtype, probe_error),
                 )
                 continue
+            assert identity is not None
+            backend_identity[backend_id] = identity
             results.append(
                 run_backend_in_subprocess(
                     backend_id,
@@ -290,7 +341,7 @@ def benchmark(
 
     return BenchmarkResult(
         matrix=matrix_info,
-        environment=_environment(),
+        environment=_environment(backend_identity),
         results=results,
         recommendations=recommend(results),
     )

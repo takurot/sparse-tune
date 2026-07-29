@@ -70,7 +70,7 @@ Matrix Inspector
         │
         ▼
 Experiment Planner
-  - backend capability probe
+  - backend capability / runtime identity probe (separate process)
   - dtype compatibility check
   - run ordering
         │

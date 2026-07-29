@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import importlib
 import json
 from pathlib import Path
 import tempfile
@@ -12,7 +11,7 @@ import warnings
 import numpy as np
 from scipy.io import mmwrite  # type: ignore[import-untyped]
 
-from ._benchmark import _environment, benchmark
+from ._benchmark import _environment, _probe_backend, benchmark
 from ._inspect import diagnose_matrix, is_cg_eligible
 from ._matrix import canonicalize_matrix
 from ._runner import canonicalize_rhs, run_solve_in_subprocess
@@ -50,24 +49,10 @@ def _runtime_identity(backend_id: str) -> dict[str, Any]:
         return {"kind": "cpu"}
     if not backend_id.startswith("cupy:cuda:"):
         raise ProfileMismatchError(f"Backend is unavailable: {backend_id}")
-    try:
-        device_index = int(backend_id.removeprefix("cupy:cuda:"))
-        cupy = importlib.import_module("cupy")
-        if device_index >= int(cupy.cuda.runtime.getDeviceCount()):
-            raise ValueError
-        properties = cupy.cuda.runtime.getDeviceProperties(device_index)
-        uuid = properties.get("uuid") or properties.get(b"uuid")
-        if isinstance(uuid, bytes):
-            uuid = uuid.hex()
-        if uuid is None and hasattr(cupy.cuda.runtime, "deviceGetUuid"):
-            uuid = cupy.cuda.runtime.deviceGetUuid(device_index)
-            if isinstance(uuid, bytes):
-                uuid = uuid.hex()
-        if uuid is None:
-            raise ValueError
-        return {"kind": "cuda", "gpu_uuid": str(uuid)}
-    except Exception as error:
-        raise ProfileMismatchError(f"Backend is unavailable: {backend_id}") from error
+    error, identity = _probe_backend(backend_id, "float64")
+    if error is not None or identity is None:
+        raise ProfileMismatchError(f"Backend is unavailable: {backend_id}")
+    return identity
 
 
 def load_profile(profile: str | Path | Mapping[str, Any]) -> Profile:
@@ -196,11 +181,20 @@ def tune(
         ),
         "timeout": float(benchmark_options.get("timeout", 300.0)),
     }
-    backend_identity = {
-        result.backend: _runtime_identity(result.backend)
-        for result in report.results
-        if result.error is None
-    }
+    reported_identity = report.environment.get("backend_identity", {})
+    if not isinstance(reported_identity, dict):
+        reported_identity = {}
+    backend_identity = {}
+    for result in report.results:
+        if result.error is not None:
+            continue
+        identity = reported_identity.get(result.backend)
+        if isinstance(identity, dict):
+            backend_identity[result.backend] = identity
+        elif result.backend == "scipy:cpu":
+            backend_identity[result.backend] = {"kind": "cpu"}
+        else:
+            raise ProfileMismatchError(f"Backend identity is missing: {result.backend}")
     profile: Profile = {
         "schema_version": _SCHEMA_VERSION,
         "matrix": {**report.matrix.to_dict(), "dtype": dtype},
