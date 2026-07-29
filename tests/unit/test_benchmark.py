@@ -172,6 +172,49 @@ def test_benchmark_orchestrates_inputs_and_retains_unsupported(
     assert report.environment["scipy"]
 
 
+@pytest.mark.parametrize("backends", [[], ()])
+def test_benchmark_rejects_explicit_empty_backends_before_processing(
+    monkeypatch: pytest.MonkeyPatch,
+    backends: list[str] | tuple[()],
+) -> None:
+    def unexpected(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("empty backends must fail before matrix or worker processing")
+
+    monkeypatch.setattr("sparsetune._benchmark.diagnose_matrix", unexpected)
+    monkeypatch.setattr("sparsetune._benchmark.canonicalize_matrix", unexpected)
+    monkeypatch.setattr("sparsetune._benchmark._probe_backend", unexpected)
+    monkeypatch.setattr(
+        "sparsetune._benchmark.run_backend_in_subprocess",
+        unexpected,
+    )
+
+    with pytest.raises(ValueError, match="at least one backend is required"):
+        benchmark(object(), backends=backends)  # type: ignore[arg-type]
+
+
+def test_benchmark_none_uses_default_backends(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    probed: list[str] = []
+
+    def unavailable(
+        backend: str,
+        _dtype: str,
+    ) -> tuple[str, None]:
+        probed.append(backend)
+        return "unavailable", None
+
+    monkeypatch.setattr("sparsetune._benchmark._probe_backend", unavailable)
+
+    benchmark(
+        csr_matrix([[4.0, 1.0], [1.0, 3.0]]),
+        backends=None,
+        runs=1,
+    )
+
+    assert probed == ["scipy:cpu", "cupy:cuda:0"]
+
+
 def test_benchmark_does_not_import_cupy_in_parent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
