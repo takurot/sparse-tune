@@ -30,7 +30,7 @@
 
 | 項目 | v0.1.0 |
 | --- | --- |
-| Python | 3.10 以上 |
+| Python | 3.10–3.14 |
 | CPU バックエンド | SciPy (`scipy:cpu`) |
 | GPU バックエンド | CuPy (`cupy:cuda:N`) |
 | GPU | NVIDIA CUDA 12.x / 13.x |
@@ -58,6 +58,7 @@ pip install "sparsetune[cuda12]"
 pip install "sparsetune[cuda13]"
 ```
 
+Python 3.10〜3.14をサポートし、CIで各versionを継続検証します。
 必須依存関係は NumPy 1.24 以上と SciPy 1.10 以上です。SciPy 1.10/1.11 の
 `tol` と新しいSciPyの `rtol` の両CG呼び出し規約に対応します。CuPy は任意依存で、
 `import sparsetune` の時点では GPU 検出などの副作用を発生させません。
