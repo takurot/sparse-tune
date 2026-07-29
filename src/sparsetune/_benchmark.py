@@ -168,16 +168,25 @@ def _break_even_solves(
         _mode_seconds(gpu, "end-to-end") - _mode_seconds(gpu, "steady-state"),
         0.0,
     )
-    return math.ceil(overhead / saving)
+    return max(1, math.ceil(overhead / saving))
+
+
+def _converged_for_mode(result: SolverResult, mode: str) -> bool:
+    samples = [sample for sample in result.samples if sample.measure == mode]
+    if result.samples:
+        return bool(samples) and all(
+            sample.status is SolveStatus.CONVERGED for sample in samples
+        )
+    return result.status is SolveStatus.CONVERGED
 
 
 def recommend(results: Sequence[SolverResult]) -> dict[str, Recommendation]:
     """Select the fastest converged backend for each documented mode."""
 
-    eligible = [result for result in results if result.status is SolveStatus.CONVERGED]
     recommendations: dict[str, Recommendation] = {}
     for mode in ("end-to-end", "steady-state"):
         key = mode.replace("-", "_")
+        eligible = [result for result in results if _converged_for_mode(result, mode)]
         if not eligible:
             recommendations[key] = Recommendation(
                 mode=mode,

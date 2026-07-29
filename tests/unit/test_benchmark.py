@@ -113,7 +113,31 @@ def test_break_even_handles_no_saving_and_zero_overhead() -> None:
     zero_overhead_gpu = _result("cupy:cuda:1", total=0.5, solve=0.5)
 
     assert recommend([cpu, slower_gpu])["end_to_end"].break_even_solves is None
-    assert recommend([cpu, zero_overhead_gpu])["steady_state"].break_even_solves == 0
+    assert recommend([cpu, zero_overhead_gpu])["steady_state"].break_even_solves == 1
+
+
+def test_recommend_isolates_failures_by_measurement_mode() -> None:
+    cpu = _result("scipy:cpu", total=2.0, solve=1.0)
+    gpu = _result("cupy:cuda:0", total=1.0, solve=0.5)
+    gpu.samples[0].status = SolveStatus.ACCURACY_FAILED
+    gpu.status = SolveStatus.ACCURACY_FAILED
+
+    recommendations = recommend([gpu, cpu])
+
+    assert recommendations["end_to_end"].backend == "scipy:cpu"
+    assert recommendations["steady_state"].backend == "cupy:cuda:0"
+
+
+def test_recommend_requires_samples_for_the_requested_mode() -> None:
+    result = _result("scipy:cpu", total=1.0, solve=0.5)
+    result.samples = [
+        sample for sample in result.samples if sample.measure == "end-to-end"
+    ]
+
+    recommendations = recommend([result])
+
+    assert recommendations["end_to_end"].backend == "scipy:cpu"
+    assert recommendations["steady_state"].backend is None
 
 
 def test_benchmark_orchestrates_inputs_and_retains_unsupported(
