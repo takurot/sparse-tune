@@ -5,13 +5,18 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import tempfile
-from typing import Any, Mapping, cast
+from typing import Any, Mapping
 import warnings
 
 import numpy as np
 from scipy.io import mmwrite  # type: ignore[import-untyped]
 
-from ._benchmark import _environment, _probe_backend, benchmark
+from ._benchmark import (
+    _environment,
+    _probe_backend,
+    _validate_solver_options,
+    benchmark,
+)
 from ._inspect import diagnose_matrix, is_cg_eligible
 from ._matrix import canonicalize_matrix
 from ._runner import canonicalize_rhs, run_solve_in_subprocess
@@ -263,10 +268,34 @@ def solve(
         profile_config = loaded_profile.get("config")
         if not isinstance(profile_config, dict):
             raise ProfileMismatchError("Profile configuration is missing")
-        selected_dtype = str(profile_config.get("dtype"))
-        selected_rtol = float(cast(Any, profile_config.get("rtol")))
-        selected_atol = float(cast(Any, profile_config.get("atol")))
-        selected_max_iter = int(cast(Any, profile_config.get("max_iter")))
+        profile_dtype = profile_config.get("dtype")
+        profile_rtol = profile_config.get("rtol")
+        profile_atol = profile_config.get("atol")
+        profile_max_iter = profile_config.get("max_iter")
+        if (
+            not isinstance(profile_dtype, str)
+            or not isinstance(profile_rtol, (int, float))
+            or isinstance(profile_rtol, bool)
+            or not isinstance(profile_atol, (int, float))
+            or isinstance(profile_atol, bool)
+            or not isinstance(profile_max_iter, int)
+            or isinstance(profile_max_iter, bool)
+        ):
+            raise ProfileMismatchError("Profile configuration is invalid")
+        selected_dtype = profile_dtype
+        selected_rtol = float(profile_rtol)
+        selected_atol = float(profile_atol)
+        selected_max_iter = profile_max_iter
+        try:
+            _validate_solver_options(
+                selected_dtype,
+                selected_rtol,
+                selected_atol,
+                selected_max_iter,
+                1.0,
+            )
+        except ValueError as error:
+            raise ProfileMismatchError("Profile configuration is invalid") from error
         if dtype is not None and dtype != selected_dtype:
             raise ProfileMismatchError("Profile dtype mismatch")
         if rtol is not None and rtol != selected_rtol:
@@ -276,11 +305,18 @@ def solve(
         if max_iter is not None and max_iter != selected_max_iter:
             raise ProfileMismatchError("Profile max_iter mismatch")
     else:
-        selected_dtype = dtype or "float64"
+        selected_dtype = "float64" if dtype is None else dtype
         selected_rtol = 1.0e-6 if rtol is None else rtol
         selected_atol = 0.0 if atol is None else atol
         selected_max_iter = 10_000 if max_iter is None else max_iter
 
+    _validate_solver_options(
+        selected_dtype,
+        selected_rtol,
+        selected_atol,
+        selected_max_iter,
+        timeout,
+    )
     matrix_info = diagnose_matrix(matrix)
     if not is_cg_eligible(matrix_info, assume_spd=assume_spd):
         if matrix_info.spd_status == "unknown":

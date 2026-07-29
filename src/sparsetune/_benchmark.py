@@ -252,18 +252,38 @@ def _validate_options(
         raise ValueError("at least one backend is required")
     if len(set(backends)) != len(backends):
         raise ValueError("backend IDs must be unique")
-    if dtype not in _DTYPES:
-        raise ValueError("dtype must be 'float32' or 'float64'")
     if not measure or not set(measure).issubset(_MEASURES):
         raise ValueError("measure must contain end-to-end or steady-state")
     if not isinstance(runs, int) or isinstance(runs, bool) or runs <= 0:
         raise ValueError("runs must be a positive integer")
+    _validate_solver_options(dtype, rtol, atol, max_iter, timeout)
+
+
+def _validate_solver_options(
+    dtype: str,
+    rtol: float,
+    atol: float,
+    max_iter: int,
+    timeout: float,
+) -> None:
+    if dtype not in _DTYPES:
+        raise ValueError("dtype must be 'float32' or 'float64'")
     if not isinstance(max_iter, int) or isinstance(max_iter, bool) or max_iter <= 0:
         raise ValueError("max_iter must be a positive integer")
     for name, value in (("rtol", rtol), ("atol", atol)):
-        if not np.isfinite(value) or value < 0:
+        if (
+            not isinstance(value, (int, float, np.integer, np.floating))
+            or isinstance(value, (bool, np.bool_))
+            or not np.isfinite(value)
+            or value < 0
+        ):
             raise ValueError(f"{name} must be a non-negative finite number")
-    if not np.isfinite(timeout) or timeout <= 0:
+    if (
+        not isinstance(timeout, (int, float, np.integer, np.floating))
+        or isinstance(timeout, (bool, np.bool_))
+        or not np.isfinite(timeout)
+        or timeout <= 0
+    ):
         raise ValueError("timeout must be a positive finite number")
 
 
