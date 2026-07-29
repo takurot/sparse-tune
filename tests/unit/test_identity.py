@@ -17,7 +17,7 @@ def test_blas_identity_tolerates_unavailable_numpy_fallback(
     monkeypatch: pytest.MonkeyPatch,
     fallback: object,
 ) -> None:
-    monkeypatch.setattr(np.__config__, "CONFIG", {})
+    monkeypatch.setattr(np.__config__, "CONFIG", {}, raising=False)
     monkeypatch.setattr(np.__config__, "get_info", fallback, raising=False)
 
     assert _blas_implementation() is None
