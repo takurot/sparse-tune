@@ -3,7 +3,6 @@ from __future__ import annotations
 from io import BytesIO
 from pathlib import Path
 import tarfile
-import tomllib
 import zipfile
 
 import pytest
@@ -63,13 +62,13 @@ def test_artifact_version_requires_one_wheel_and_one_sdist(tmp_path: Path) -> No
 
 def test_python_policy_and_workflows_stay_aligned() -> None:
     root = Path(__file__).parents[2]
-    project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    project = (root / "pyproject.toml").read_text(encoding="utf-8")
     test_workflow = (root / ".github/workflows/test.yml").read_text(encoding="utf-8")
     testpypi_workflow = (root / ".github/workflows/testpypi.yml").read_text(
         encoding="utf-8"
     )
 
-    assert project["project"]["requires-python"] == ">=3.10,<3.15"
+    assert 'requires-python = ">=3.10,<3.15"' in project
     assert 'python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]' in test_workflow
     assert "scripts/artifact_version.py dist/*" in testpypi_workflow
     assert 'version="$(python scripts/artifact_version.py dist/*)"' in testpypi_workflow
