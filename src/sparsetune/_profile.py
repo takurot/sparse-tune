@@ -26,10 +26,9 @@ from ._types import (
     Profile,
     SolveResult,
     SolverResult,
+    _SCHEMA_VERSION,
 )
 
-
-_SCHEMA_VERSION = "1.0"
 _STALE_ENVIRONMENT_FIELDS = (
     "python",
     "numpy",

@@ -23,9 +23,11 @@ def _json_between(
     end: str,
     source: str,
 ) -> dict[str, object]:
+    assert start in text, f"{source} is missing the start sentinel marker"
+    assert end in text, f"{source} is missing the end sentinel marker"
     section = text.split(start, 1)[1].split(end, 1)[0]
     payload = re.search(r"```json\s*(.*?)\s*```", section, re.DOTALL)
-    assert payload is not None
+    assert payload is not None, f"{source} contains no marked JSON code fence"
     return _parse_json(payload.group(1), source)
 
 
@@ -50,8 +52,10 @@ def test_spec_benchmark_example_matches_live_schema() -> None:
         *(field.name for field in fields(MatrixInfo)),
         "dtype",
     }
+    assert payload["results"], "SPEC.md benchmark example needs a result"
     result = payload["results"][0]  # type: ignore[index]
     assert set(result) == {field.name for field in fields(SolverResult)}
+    assert result["samples"], "SPEC.md benchmark example needs a sample"
     assert set(result["samples"][0]) == {  # type: ignore[index]
         field.name for field in fields(RunSample)
     }
@@ -63,14 +67,11 @@ def test_spec_benchmark_example_matches_live_schema() -> None:
 
 def test_readme_recommendation_examples_match_live_shape() -> None:
     readme = (_PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
-    examples = [
-        _parse_json(block, "README.md")
-        for block in re.findall(r"```json\s*(.*?)\s*```", readme, re.DOTALL)
+    raw_blocks = re.findall(r"```json\s*(.*?)\s*```", readme, re.DOTALL)
+    recommendations = [
+        _parse_json(block, "README.md") for block in raw_blocks if '"reason"' in block
     ]
-    recommendations = [example for example in examples if "reason" in example]
 
     assert len(recommendations) == 2
-    assert all(
-        set(example) == {field.name for field in fields(Recommendation)}
-        for example in recommendations
-    )
+    recommendation_keys = {field.name for field in fields(Recommendation)}
+    assert all(set(example) == recommendation_keys for example in recommendations)
