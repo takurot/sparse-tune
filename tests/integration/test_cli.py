@@ -111,6 +111,20 @@ def test_bench_formats_stay_on_stdout(
     assert "Benchmarking" in captured.err
 
 
+def test_bench_rejects_empty_backend_input_before_calling_api(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "sparsetune._cli.benchmark",
+        lambda *_args, **_kwargs: pytest.fail("benchmark must not run"),
+    )
+
+    with pytest.raises(SystemExit) as error:
+        main(["bench", "matrix.mtx", "--backends", " , "])
+
+    assert error.value.code == 2
+
+
 def test_quiet_suppresses_progress_only(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

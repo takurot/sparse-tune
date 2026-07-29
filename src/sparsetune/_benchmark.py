@@ -283,7 +283,7 @@ def benchmark(
 ) -> BenchmarkResult:
     """Benchmark requested backends in isolated workers."""
 
-    requested = list(backends or ("scipy:cpu", "cupy:cuda:0"))
+    requested = list(("scipy:cpu", "cupy:cuda:0") if backends is None else backends)
     modes = list(measure)
     _validate_options(
         requested,
