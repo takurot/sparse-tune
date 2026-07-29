@@ -373,4 +373,5 @@ def benchmark(
         environment=_environment(backend_identity),
         results=results,
         recommendations=recommend(results),
+        dtype=dtype,
     )

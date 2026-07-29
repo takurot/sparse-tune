@@ -211,6 +211,7 @@ CPU が一回の求解で最速の場合、`end_to_end` は次の形になりま
 
 ```json
 {
+  "mode": "end-to-end",
   "backend": "scipy:cpu",
   "reason": "Fastest converged end-to-end result (0.0031 seconds)",
   "speedup": 1.7,
@@ -223,6 +224,7 @@ GPU が反復利用で最速の場合、転送・セットアップの初期コ�
 
 ```json
 {
+  "mode": "steady-state",
   "backend": "cupy:cuda:0",
   "reason": "Fastest converged steady-state result (0.0012 seconds)",
   "speedup": 2.4,

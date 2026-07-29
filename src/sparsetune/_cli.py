@@ -142,7 +142,7 @@ def _matrix_table(info: MatrixInfo) -> str:
 
 
 def _benchmark_payload(report: BenchmarkResult) -> dict[str, Any]:
-    return {"schema_version": "1.0", **report.to_dict()}
+    return report.to_dict()
 
 
 def _benchmark_csv(report: BenchmarkResult) -> str:

@@ -72,6 +72,18 @@ def test_run_sample_and_solver_result_are_json_serializable() -> None:
 
 
 def test_benchmark_result_serializes_and_finds_recommended_result() -> None:
+    sample = RunSample(
+        measure="end-to-end",
+        transfer_seconds=0.0,
+        setup_seconds=0.1,
+        solve_seconds=0.2,
+        total_seconds=0.3,
+        iterations=3,
+        residual_norm=0.0,
+        relative_residual=0.0,
+        convergence_threshold=1.0e-6,
+        status=SolveStatus.CONVERGED,
+    )
     result = SolverResult(
         backend="scipy:cpu",
         solver_impl="scipy.sparse.linalg.cg",
@@ -87,6 +99,7 @@ def test_benchmark_result_serializes_and_finds_recommended_result() -> None:
         pool_used_gb=None,
         status=SolveStatus.CONVERGED,
         error=None,
+        samples=[sample],
     )
     report = BenchmarkResult(
         matrix=MatrixInfo(
@@ -113,7 +126,25 @@ def test_benchmark_result_serializes_and_finds_recommended_result() -> None:
 
     assert report.best() is result
     assert report.best("steady-state") is None
-    assert json.loads(report.to_json())["matrix"]["shape"] == [2, 2]
+    payload = json.loads(report.to_json())
+    assert payload == report.to_dict()
+    assert set(payload) == {
+        "schema_version",
+        "matrix",
+        "environment",
+        "results",
+        "recommendations",
+    }
+    assert payload["schema_version"] == "1.0"
+    assert payload["matrix"]["dtype"] == "float64"
+    assert payload["results"][0]["samples"] == [sample.to_dict()]
+    assert payload["recommendations"]["end_to_end"] == {
+        "mode": "end-to-end",
+        "backend": "scipy:cpu",
+        "reason": "Only converged backend",
+        "speedup": None,
+        "break_even_solves": None,
+    }
 
 
 def test_canonical_matrix_exposes_csr_metadata() -> None:

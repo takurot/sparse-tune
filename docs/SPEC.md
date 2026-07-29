@@ -147,60 +147,88 @@ sparsetune bench <matrix_file> [options]
 
 **出力例 (JSON):**
 
+<!-- benchmark-schema-example:start -->
 ```json
 {
   "schema_version": "1.0",
   "matrix": {
     "path": "model.mtx",
-    "shape": [150000, 150000],
-    "nnz": 4712366,
-    "fingerprint": "sha256:abc123...",
+    "shape": [2, 2],
+    "nnz": 4,
+    "density": 1.0,
+    "is_square": true,
+    "symmetry_ratio": 1.0,
+    "diagonal_sign": "all_positive",
+    "spd_status": "screen_passed",
+    "fingerprint": "sha256:example",
     "dtype": "float64"
   },
   "environment": {
-    "os": "Linux",
-    "python": "3.12.4",
-    "cuda_device": "NVIDIA RTX 4090",
-    "cuda_driver": "550.90.07",
-    "cupy_version": "14.1.0",
-    "scipy_version": "1.17.0"
+    "python": "3.12.4"
   },
   "results": [
-    {
-      "backend": "cupy:cuda:0",
-      "solver_impl": "cupyx.scipy.sparse.linalg.cg",
-      "dtype": "float64",
-      "transfer_seconds": 0.31,
-      "setup_seconds": 0.04,
-      "solve_seconds": 1.23,
-      "total_seconds": 1.61,
-      "iterations": 142,
-      "residual_norm": 3.5e-09,
-      "relative_residual": 1.2e-10,
-      "convergence_threshold": 3.0e-05,
-      "status": "converged"
-    },
     {
       "backend": "scipy:cpu",
       "solver_impl": "scipy.sparse.linalg.cg",
       "dtype": "float64",
       "transfer_seconds": 0.0,
       "setup_seconds": 0.01,
-      "solve_seconds": 47.20,
-      "total_seconds": 47.21,
-      "iterations": 142,
-      "residual_norm": 1.1e-06,
-      "relative_residual": 3.5e-08,
-      "convergence_threshold": 3.0e-05,
-      "status": "converged"
+      "solve_seconds": 0.02,
+      "total_seconds": 0.03,
+      "iterations": 3,
+      "residual_norm": 1.0e-08,
+      "relative_residual": 1.0e-09,
+      "convergence_threshold": 1.0e-06,
+      "pool_used_gb": null,
+      "status": "converged",
+      "error": null,
+      "samples": [
+        {
+          "measure": "end-to-end",
+          "transfer_seconds": 0.0,
+          "setup_seconds": 0.01,
+          "solve_seconds": 0.02,
+          "total_seconds": 0.03,
+          "iterations": 3,
+          "residual_norm": 1.0e-08,
+          "relative_residual": 1.0e-09,
+          "convergence_threshold": 1.0e-06,
+          "status": "converged",
+          "error": null,
+          "pool_used_gb": null
+        }
+      ]
     }
   ],
   "recommendations": {
-    "end_to_end": "cupy:cuda:0",
-    "steady_state": "cupy:cuda:0"
+    "end_to_end": {
+      "mode": "end-to-end",
+      "backend": "scipy:cpu",
+      "reason": "Fastest converged end-to-end result (0.03 seconds)",
+      "speedup": null,
+      "break_even_solves": null
+    },
+    "steady_state": {
+      "mode": "steady-state",
+      "backend": null,
+      "reason": "No backend produced converged result",
+      "speedup": null,
+      "break_even_solves": null
+    }
   }
 }
 ```
+<!-- benchmark-schema-example:end -->
+
+`BenchmarkResult.to_dict()`、`BenchmarkResult.to_json()`、CLI `bench --format json`、
+およびprofileのbenchmark部分は、このschema 1.0を共通で使用する。profileは同じ
+top-levelの `matrix`、`environment`、`results`、`recommendations` に
+`config` と `backend_identity` を追加する。
+
+初期のv0.1.x Python APIは、CLIが付加していた `schema_version` と
+`matrix.dtype` を `BenchmarkResult.to_dict()/to_json()` では省略していた。
+schema 1.0の互換修復後はこれらのkeyが常に含まれるため、厳密なkey比較を行う
+consumerは追加keyを受け入れ、`schema_version` を先に確認すること。
 
 **計測モード定義:**
 
@@ -389,12 +417,21 @@ class BenchmarkResult:
     matrix: MatrixInfo
     environment: dict
     results: list[SolverResult]
-    recommendations: dict  # {'end_to_end': 'cupy:cuda:0', 'steady_state': '...'}
+    recommendations: dict[str, Recommendation]
+    dtype: str
+    schema_version: str = '1.0'
 
     def best(self, mode='end-to-end') -> SolverResult: ...
     def to_json(self) -> str: ...
     def to_dict(self) -> dict: ...
-    def to_table(self) -> str: ...
+
+@dataclass
+class Recommendation:
+    mode: str
+    backend: str | None
+    reason: str
+    speedup: float | None
+    break_even_solves: int | None
 
 @dataclass
 class SolverResult:
@@ -412,8 +449,24 @@ class SolverResult:
     pool_used_gb: float | None       # CuPy pool used_bytes() delta (reference only)
     status: str            # SolveStatus value
     error: str | None
+    samples: list[RunSample]
 
-Profile = dict  # JSON-serializable benchmark result
+@dataclass
+class RunSample:
+    measure: str           # 'end-to-end' or 'steady-state'
+    transfer_seconds: float
+    setup_seconds: float
+    solve_seconds: float
+    total_seconds: float
+    iterations: int
+    residual_norm: float
+    relative_residual: float | None
+    convergence_threshold: float
+    status: str            # SolveStatus value
+    error: str | None
+    pool_used_gb: float | None
+
+Profile = dict  # benchmark schema 1.0 + config + backend_identity
 ```
 
 ---
