@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import importlib
+import inspect
 from typing import Any, Protocol
 
 import numpy as np
@@ -13,6 +14,25 @@ from scipy.sparse.linalg import cg  # type: ignore[import-untyped]
 
 
 _SUPPORTED_DTYPES = {"float32", "float64"}
+
+
+def _tolerance_kwargs(
+    solver: Any,
+    *,
+    rtol: float,
+    atol: float,
+) -> dict[str, float]:
+    """Map the public tolerance contract to old and current CG signatures."""
+
+    try:
+        parameters = inspect.signature(solver).parameters.values()
+    except (TypeError, ValueError):
+        return {"rtol": rtol, "atol": atol}
+    if any(parameter.name == "rtol" for parameter in parameters) or any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters
+    ):
+        return {"rtol": rtol, "atol": atol}
+    return {"tol": rtol, "atol": atol}
 
 
 class UnsupportedBackendError(RuntimeError):
@@ -135,10 +155,9 @@ class SciPyBackend:
         solution, info = cg(
             prepared.matrix,
             prepared.rhs,
-            rtol=rtol,
-            atol=atol,
             maxiter=max_iter,
             callback=count_iteration,
+            **_tolerance_kwargs(cg, rtol=rtol, atol=atol),
         )
         return NativeSolveResult(
             solution=solution,
@@ -248,10 +267,9 @@ class CuPyBackend:
         solution, info = self._linalg.cg(
             prepared.matrix,
             prepared.rhs,
-            rtol=rtol,
-            atol=atol,
             maxiter=max_iter,
             callback=count_iteration,
+            **_tolerance_kwargs(self._linalg.cg, rtol=rtol, atol=atol),
         )
         return NativeSolveResult(
             solution=solution,
