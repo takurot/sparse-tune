@@ -14,7 +14,7 @@ from numpy.typing import NDArray
 from scipy.sparse import load_npz  # type: ignore[import-untyped]
 
 from ._backends import Backend, NativeSolveResult, UnsupportedBackendError, get_backend
-from ._runner import classify_solve
+from ._runner import _SUPPORTED_DTYPES, classify_solve
 from ._types import RunSample, SolveStatus, SolverResult
 
 
@@ -68,7 +68,7 @@ def _read_config(path: Path) -> dict[str, Any]:
         raise ValueError("invalid worker configuration")
     if set(payload) != {"dtype", "rtol", "atol", "max_iter", "runs", "measure"}:
         raise ValueError("invalid worker configuration")
-    if payload["dtype"] not in {"float32", "float64"}:
+    if payload["dtype"] not in _SUPPORTED_DTYPES:
         raise ValueError("invalid worker configuration")
     for name in ("rtol", "atol"):
         value = payload[name]
@@ -324,7 +324,7 @@ def main() -> int:
     try:
         payload = json.loads(args.config.read_text(encoding="utf-8"))
         requested_dtype = payload.get("dtype") if isinstance(payload, dict) else None
-        dtype = requested_dtype if requested_dtype in {"float32", "float64"} else ""
+        dtype = requested_dtype if requested_dtype in _SUPPORTED_DTYPES else ""
     except (OSError, UnicodeError, json.JSONDecodeError):
         dtype = ""
     try:
