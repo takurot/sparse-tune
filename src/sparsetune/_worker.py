@@ -14,7 +14,7 @@ from numpy.typing import NDArray
 from scipy.sparse import load_npz  # type: ignore[import-untyped]
 
 from ._backends import Backend, NativeSolveResult, UnsupportedBackendError, get_backend
-from ._runner import classify_solve
+from ._runner import _SUPPORTED_DTYPES, classify_solve
 from ._types import RunSample, SolveStatus, SolverResult
 
 
@@ -34,6 +34,7 @@ def status_for_exception(error: BaseException) -> SolveStatus:
 def _error_result(
     backend_id: str,
     status: SolveStatus,
+    dtype: str,
 ) -> SolverResult:
     messages = {
         SolveStatus.OOM: "Backend ran out of memory",
@@ -43,7 +44,7 @@ def _error_result(
     return SolverResult(
         backend=backend_id,
         solver_impl="",
-        dtype="",
+        dtype=dtype,
         transfer_seconds=0.0,
         setup_seconds=0.0,
         solve_seconds=0.0,
@@ -67,7 +68,7 @@ def _read_config(path: Path) -> dict[str, Any]:
         raise ValueError("invalid worker configuration")
     if set(payload) != {"dtype", "rtol", "atol", "max_iter", "runs", "measure"}:
         raise ValueError("invalid worker configuration")
-    if payload["dtype"] not in {"float32", "float64"}:
+    if payload["dtype"] not in _SUPPORTED_DTYPES:
         raise ValueError("invalid worker configuration")
     for name in ("rtol", "atol"):
         value = payload[name]
@@ -321,6 +322,12 @@ def _parse_args() -> argparse.Namespace:
 def main() -> int:
     args = _parse_args()
     try:
+        payload = json.loads(args.config.read_text(encoding="utf-8"))
+        requested_dtype = payload.get("dtype") if isinstance(payload, dict) else None
+        dtype = requested_dtype if requested_dtype in _SUPPORTED_DTYPES else ""
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        dtype = ""
+    try:
         result = run_worker(
             args.backend,
             args.matrix_npz,
@@ -328,7 +335,7 @@ def main() -> int:
             args.config,
         )
     except Exception as error:
-        result = _error_result(args.backend, status_for_exception(error))
+        result = _error_result(args.backend, status_for_exception(error), dtype)
 
     args.result.write_text(result.to_json(), encoding="utf-8")
     return 0

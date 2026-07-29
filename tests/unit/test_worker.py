@@ -11,8 +11,11 @@ from sparsetune import canonicalize_matrix
 from sparsetune._backends import NativeSolveResult
 from sparsetune._backends import UnsupportedBackendError
 from sparsetune._runner import canonicalize_rhs
+from sparsetune._runner import _SUPPORTED_DTYPES
+from sparsetune._solve_worker import _read_config as _read_solve_config
 from sparsetune._types import SolveStatus
 from sparsetune._worker import (
+    _read_config as _read_benchmark_config,
     _end_to_end_samples,
     _steady_state_samples,
     run_worker,
@@ -72,6 +75,43 @@ class RecordingBackend:
 
     def release(self, prepared: tuple[object, np.ndarray]) -> None:
         return None
+
+
+def test_workers_share_the_parent_supported_dtype_set(tmp_path: Path) -> None:
+    future_dtype = "float16"
+    benchmark_config = tmp_path / "benchmark.json"
+    solve_config = tmp_path / "solve.json"
+    benchmark_config.write_text(
+        json.dumps(
+            {
+                "dtype": future_dtype,
+                "rtol": 1.0e-6,
+                "atol": 0.0,
+                "max_iter": 50,
+                "runs": 1,
+                "measure": ["end-to-end"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    solve_config.write_text(
+        json.dumps(
+            {
+                "dtype": future_dtype,
+                "rtol": 1.0e-6,
+                "atol": 0.0,
+                "max_iter": 50,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    _SUPPORTED_DTYPES.add(future_dtype)
+    try:
+        assert _read_benchmark_config(benchmark_config)["dtype"] == future_dtype
+        assert _read_solve_config(solve_config)["dtype"] == future_dtype
+    finally:
+        _SUPPORTED_DTYPES.remove(future_dtype)
 
 
 def test_worker_exception_statuses_are_structured() -> None:
