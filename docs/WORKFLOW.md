@@ -1,6 +1,6 @@
 # sparsetune 開発ワークフロー
 
-**最終更新:** 2026-07-26
+**最終更新:** 2026-07-29
 **対象:** `sparsetune` v0.1.0
 
 このドキュメントは、`sparsetune` の機能追加・不具合修正・ドキュメント更新を、
@@ -187,6 +187,41 @@ git push -u origin HEAD
 - 実行したテストと、環境上実行できなかったテスト
 - GPU、性能、互換性への影響
 - 関連 Issue があれば `Closes #<ISSUE>`
+
+### 8.1 Open Code Review によるコードレビュー
+
+PR を作成したら、マージ前に
+[Open Code Review](https://github.com/alibaba/open-code-review) の `ocr review` で
+PR ブランチが導入する差分をレビューします。初回利用時は公式手順に従って CLI と
+LLM を設定し、レビュー前に接続を確認します。
+
+```bash
+which ocr
+ocr llm test
+```
+
+PR の目的、受け入れ条件、非スコープを短い background にまとめ、最新のリモート
+base と現在のブランチを範囲モードで比較します。`--preview` で対象ファイルを確認して
+から、agent 向けの最終サマリーを生成します。
+
+```bash
+git fetch origin main
+ocr review --preview --from origin/main --to HEAD
+ocr review --audience agent \
+  --background "<PR の目的、受け入れ条件、重点的に確認する境界>" \
+  --from origin/main \
+  --to HEAD
+```
+
+レビュー結果はそのまま採用せず、指摘箇所の実装、SPEC、テストを確認して、
+再現可能性と影響を検証します。妥当な High / Medium の指摘は最小修正と回帰テストを
+追加し、テスト、コミット、push 後に同じ範囲で `ocr review` を再実行します。
+誤検知、根拠のない推測、今回の非スコープは理由を記録して除外します。
+
+PR の本文またはコメントには、実行した `ocr review` コマンド、確認した指摘、
+対応内容、未解決事項を記録します。対象拡張子がないためレビューがスキップされた
+場合も、その結果を記録します。Open Code Review はテスト、静的解析、セキュリティ
+確認、人手レビューの代替にはしません。
 
 GitHub Actions が設定された後は、PR の全チェックを確認し、失敗した場合はログを
 読んで最小修正と回帰テストを追加します。
