@@ -9,7 +9,7 @@ import numpy as np
 from scipy.sparse import csr_matrix, issparse  # type: ignore[import-untyped]
 from scipy.sparse.linalg import norm as sparse_norm  # type: ignore[import-untyped]
 
-from ._matrix import fingerprint_csr, load_matrix
+from ._matrix import _load_matrix, fingerprint_csr
 from ._types import CanonicalMatrix, MatrixInfo, MatrixInput
 
 
@@ -18,7 +18,7 @@ _SYMMETRY_TOLERANCE = 1.0e-10
 
 def _as_csr(matrix: MatrixInput) -> Any:
     if isinstance(matrix, (str, Path)):
-        matrix = load_matrix(matrix)
+        matrix = _load_matrix(matrix, require_square=False)
     if isinstance(matrix, CanonicalMatrix):
         return csr_matrix(
             (matrix.data, matrix.indices, matrix.indptr),
@@ -91,6 +91,16 @@ def diagnose_matrix(
         spd_status=spd_status,
         fingerprint=fingerprint_csr(csr),
     )
+
+
+def inspect(
+    matrix: MatrixInput,
+    *,
+    path: str | Path | None = None,
+) -> MatrixInfo:
+    """Return public structural matrix information without requiring square input."""
+
+    return diagnose_matrix(matrix, path=path)
 
 
 def is_cg_eligible(

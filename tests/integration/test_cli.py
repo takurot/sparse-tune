@@ -79,6 +79,19 @@ def test_inspect_json_stdout_is_clean(
     assert "Inspecting" in captured.err
 
 
+def test_inspect_accepts_nonsquare_matrix_market_path(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fixture = Path("tests/fixtures/small_nonsquare.mtx")
+
+    assert main(["inspect", str(fixture), "--quiet"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["shape"] == [2, 3]
+    assert payload["is_square"] is False
+    assert payload["spd_status"] == "failed"
+
+
 @pytest.mark.parametrize("output_format", ["json", "csv", "table"])
 def test_bench_formats_stay_on_stdout(
     monkeypatch: pytest.MonkeyPatch,

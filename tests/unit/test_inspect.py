@@ -6,9 +6,12 @@ from scipy.io import mmread
 from scipy.sparse import csr_matrix
 
 from sparsetune import (
+    benchmark,
     diagnose_matrix,
     fingerprint_csr,
+    inspect as inspect_matrix,
     load_matrix,
+    solve,
 )
 from sparsetune._inspect import is_cg_eligible
 
@@ -52,6 +55,45 @@ def test_nonsquare_and_nonsymmetric_matrices_fail_spd_screen() -> None:
     assert nonsymmetric.spd_status == "failed"
     assert is_cg_eligible(nonsquare, assume_spd=True) is False
     assert is_cg_eligible(nonsymmetric, assume_spd=True) is False
+
+
+def test_public_inspect_accepts_nonsquare_matrix_market_path() -> None:
+    path = FIXTURES / "small_nonsquare.mtx"
+
+    info = inspect_matrix(path)
+
+    assert info.path == str(path)
+    assert info.shape == (2, 3)
+    assert info.is_square is False
+    assert info.spd_status == "failed"
+    assert info.fingerprint == fingerprint_csr(_as_csr(path))
+
+
+def test_public_inspect_is_consistent_across_supported_inputs() -> None:
+    path = FIXTURES / "small_symmetric.mtx"
+    canonical = load_matrix(path)
+    sparse = _as_csr(path)
+
+    from_path = inspect_matrix(path)
+    from_canonical = inspect_matrix(canonical)
+    from_sparse = inspect_matrix(sparse)
+
+    assert from_path.path == str(path)
+    assert from_path.shape == from_canonical.shape == from_sparse.shape
+    assert from_path.nnz == from_canonical.nnz == from_sparse.nnz
+    assert from_path.spd_status == from_canonical.spd_status == from_sparse.spd_status
+    assert (
+        from_path.fingerprint == from_canonical.fingerprint == from_sparse.fingerprint
+    )
+
+
+def test_solve_and_benchmark_still_reject_nonsquare_paths() -> None:
+    path = FIXTURES / "small_nonsquare.mtx"
+
+    with pytest.raises(ValueError, match="not eligible"):
+        benchmark(path, backends=["scipy:cpu"], runs=1)
+    with pytest.raises(ValueError, match="not eligible"):
+        solve(path, backend="scipy:cpu")
 
 
 def test_positive_diagonal_screening_does_not_prove_positive_definiteness() -> None:
