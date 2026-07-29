@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 import platform
 import subprocess
-from typing import Any
 
 import numpy as np
 
@@ -88,10 +87,14 @@ def _blas_implementation() -> str | None:
                     return name
     get_info = getattr(np.__config__, "get_info", None)
     if callable(get_info):
-        info: dict[str, Any] = get_info("blas_opt_info")
-        libraries = info.get("libraries")
-        if isinstance(libraries, list) and libraries:
-            return ",".join(str(library) for library in libraries)
+        try:
+            info = get_info("blas_opt_info")
+        except Exception:
+            return None
+        if isinstance(info, dict):
+            libraries = info.get("libraries")
+            if isinstance(libraries, list) and libraries:
+                return ",".join(str(library) for library in libraries)
     return None
 
 
