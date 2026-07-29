@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from pathlib import Path
+import importlib
+import json
+import subprocess
 
 import pytest
 from scipy.sparse import csr_matrix
 
 from sparsetune import RunSample, SolveStatus, SolverResult, benchmark
-from sparsetune._benchmark import recommend
+from sparsetune._benchmark import _probe_backend, recommend
 
 
 def _result(
@@ -120,8 +123,17 @@ def test_benchmark_orchestrates_inputs_and_retains_unsupported(
     calls: list[str] = []
     successful = _result("scipy:cpu", total=1.0, solve=0.8)
 
-    def fake_probe(backend_id: str, _dtype: str) -> str | None:
-        return None if backend_id == "scipy:cpu" else "unavailable"
+    def fake_probe(
+        backend_id: str,
+        _dtype: str,
+    ) -> tuple[str | None, dict[str, object] | None]:
+        if backend_id == "scipy:cpu":
+            return None, {
+                "backend": backend_id,
+                "kind": "cpu",
+                "scipy_version": "1.14",
+            }
+        return "unavailable", None
 
     def fake_run(
         backend_id: str,
@@ -158,6 +170,96 @@ def test_benchmark_orchestrates_inputs_and_retains_unsupported(
     assert report.environment["python"]
     assert report.environment["numpy"]
     assert report.environment["scipy"]
+
+
+def test_benchmark_does_not_import_cupy_in_parent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    imported: list[str] = []
+    real_import = importlib.import_module
+
+    def poison_cupy(name: str) -> object:
+        if name == "cupy":
+            imported.append(name)
+            raise AssertionError("CuPy must not be imported in the parent")
+        return real_import(name)
+
+    monkeypatch.setattr(
+        "sparsetune._benchmark.importlib.import_module",
+        poison_cupy,
+    )
+
+    report = benchmark(
+        csr_matrix([[4.0, 1.0], [1.0, 3.0]]),
+        backends=["scipy:cpu"],
+        runs=1,
+    )
+
+    assert report.results[0].status is SolveStatus.CONVERGED
+    assert imported == []
+
+
+def test_probe_accepts_validated_cuda_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    identity = {
+        "backend": "cupy:cuda:0",
+        "kind": "cuda",
+        "gpu_uuid": "gpu-uuid",
+        "gpu_model": "Example GPU",
+        "cuda_driver": 12080,
+        "cuda_runtime": 12060,
+        "cupy_version": "14.0.0",
+    }
+    monkeypatch.setattr(
+        "sparsetune._benchmark.subprocess.run",
+        lambda *_a, **_k: subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=json.dumps(identity),
+            stderr="",
+        ),
+    )
+
+    error, parsed = _probe_backend("cupy:cuda:0", "float64")
+
+    assert error is None
+    assert parsed == identity
+
+
+@pytest.mark.parametrize(
+    "identity",
+    [
+        {"backend": "cupy:cuda:0", "kind": "cuda"},
+        {
+            "backend": "cupy:cuda:1",
+            "kind": "cuda",
+            "gpu_uuid": "gpu-uuid",
+            "gpu_model": "Example GPU",
+            "cuda_driver": 12080,
+            "cuda_runtime": 12060,
+            "cupy_version": "14.0.0",
+        },
+    ],
+)
+def test_probe_rejects_malformed_or_mismatched_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    identity: dict[str, object],
+) -> None:
+    monkeypatch.setattr(
+        "sparsetune._benchmark.subprocess.run",
+        lambda *_a, **_k: subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=json.dumps(identity),
+            stderr="",
+        ),
+    )
+
+    error, parsed = _probe_backend("cupy:cuda:0", "float64")
+
+    assert error == "Backend capability probe returned malformed identity"
+    assert parsed is None
 
 
 def test_benchmark_runs_scipy_worker_and_preserves_raw_samples() -> None:

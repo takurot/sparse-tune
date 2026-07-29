@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import importlib
 import warnings
 
 import numpy as np
@@ -110,6 +111,42 @@ def test_tune_save_load_round_trip(
     assert profile["schema_version"] == "1.0"
     assert profile["config"]["runs"] == 2
     assert json.loads(output.read_text(encoding="utf-8")) == profile
+
+
+def test_tune_uses_worker_identity_without_importing_cupy_in_parent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    matrix = csr_matrix([[4.0, 1.0], [1.0, 3.0]])
+    report = _report(matrix)
+    report.results = [_solver_result("cupy:cuda:0")]
+    report.environment["backend_identity"] = {
+        "cupy:cuda:0": {
+            "kind": "cuda",
+            "gpu_uuid": "gpu-uuid",
+            "gpu_model": "GPU",
+            "cuda_runtime": 12000,
+            "cupy_version": "14.0",
+        }
+    }
+    imported: list[str] = []
+    real_import = importlib.import_module
+
+    def poison_cupy(name: str) -> object:
+        if name == "cupy":
+            imported.append(name)
+            raise AssertionError("CuPy must not be imported in the parent")
+        return real_import(name)
+
+    monkeypatch.setattr("sparsetune._profile.benchmark", lambda *_a, **_k: report)
+    monkeypatch.setattr(
+        "sparsetune._benchmark.importlib.import_module",
+        poison_cupy,
+    )
+
+    profile = tune(matrix, backends=["cupy:cuda:0"], runs=1)
+
+    assert profile["backend_identity"] == report.environment["backend_identity"]
+    assert imported == []
 
 
 @pytest.mark.parametrize(
@@ -239,6 +276,38 @@ def test_solve_profile_selects_requested_mode_without_benchmarking(
     assert selected == ["scipy:cpu"]
     assert result.status is SolveStatus.CONVERGED
     np.testing.assert_array_equal(result.x, [1.0, 1.0])
+
+
+def test_scipy_profile_solve_does_not_probe_cupy_in_parent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    matrix = csr_matrix([[4.0, 1.0], [1.0, 3.0]])
+    profile = _profile(matrix)
+    imported: list[str] = []
+    real_import = importlib.import_module
+
+    def poison_cupy(name: str) -> object:
+        if name == "cupy":
+            imported.append(name)
+            raise AssertionError("CuPy must not be imported in the parent")
+        return real_import(name)
+
+    monkeypatch.setattr(
+        "sparsetune._benchmark.importlib.import_module",
+        poison_cupy,
+    )
+    monkeypatch.setattr(
+        "sparsetune._profile.run_solve_in_subprocess",
+        lambda *_a, **_k: (
+            _solver_result("scipy:cpu"),
+            np.asarray([1.0, 1.0]),
+        ),
+    )
+
+    result = solve(matrix, profile=profile, allow_stale_profile=True)
+
+    assert result.status is SolveStatus.CONVERGED
+    assert imported == []
 
 
 def test_solve_requires_exactly_one_backend_selection() -> None:
