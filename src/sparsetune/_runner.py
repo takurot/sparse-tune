@@ -63,8 +63,12 @@ def canonicalize_rhs(
         loaded = mmread(Path(rhs))
         if issparse(loaded):
             loaded = loaded.toarray()
+        if np.iscomplexobj(loaded):
+            raise ValueError("complex RHS is not supported")
         values = np.asarray(loaded, dtype=dtype)
     else:
+        if np.iscomplexobj(rhs):
+            raise ValueError("complex RHS is not supported")
         values = np.asarray(rhs, dtype=dtype)
 
     if values.ndim == 2 and 1 in values.shape:

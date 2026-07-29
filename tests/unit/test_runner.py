@@ -86,6 +86,57 @@ def test_canonicalize_rhs_rejects_invalid_values(
 
 
 @pytest.mark.parametrize(
+    "values",
+    [
+        np.asarray([1.0 + 2.0j, 3.0 + 4.0j]),
+        np.asarray([1.0 + 0.0j, 3.0 + 0.0j]),
+    ],
+)
+def test_canonicalize_rhs_rejects_complex_arrays_before_conversion(
+    tmp_path: Path,
+    values: np.ndarray,
+) -> None:
+    _, canonical = canonicalize_matrix(
+        csr_matrix(np.eye(2)),
+        "float64",
+        tmp_path,
+    )
+
+    with pytest.raises(ValueError, match="complex"):
+        canonicalize_rhs(
+            values,
+            canonical,
+            dtype_str="float64",
+            work_dir=tmp_path,
+        )
+
+
+@pytest.mark.parametrize("imaginary", [2.0, 0.0])
+def test_canonicalize_rhs_rejects_complex_matrix_market_before_conversion(
+    tmp_path: Path,
+    imaginary: float,
+) -> None:
+    _, canonical = canonicalize_matrix(
+        csr_matrix(np.eye(2)),
+        "float64",
+        tmp_path,
+    )
+    rhs_path = tmp_path / "complex_rhs.mtx"
+    mmwrite(
+        rhs_path,
+        np.asarray([1.0 + imaginary * 1j, 3.0 + 0.0j]).reshape(-1, 1),
+    )
+
+    with pytest.raises(ValueError, match="complex"):
+        canonicalize_rhs(
+            rhs_path,
+            canonical,
+            dtype_str="float64",
+            work_dir=tmp_path,
+        )
+
+
+@pytest.mark.parametrize(
     ("info", "solution", "residual", "threshold", "expected"),
     [
         (0, [np.nan], 0.0, 1.0, SolveStatus.NAN_INF),
