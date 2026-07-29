@@ -53,6 +53,14 @@ def test_artifact_version_rejects_metadata_mismatch(tmp_path: Path) -> None:
         artifact_version([wheel, sdist])
 
 
+def test_artifact_version_requires_one_wheel_and_one_sdist(tmp_path: Path) -> None:
+    wheel = tmp_path / "sparsetune-0.1.11-py3-none-any.whl"
+    _wheel(wheel, "0.1.11")
+
+    with pytest.raises(ValueError, match="exactly one wheel and one sdist"):
+        artifact_version([wheel])
+
+
 def test_python_policy_and_workflows_stay_aligned() -> None:
     root = Path(__file__).parents[2]
     project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
@@ -64,6 +72,8 @@ def test_python_policy_and_workflows_stay_aligned() -> None:
     assert project["project"]["requires-python"] == ">=3.10,<3.15"
     assert 'python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]' in test_workflow
     assert "scripts/artifact_version.py dist/*" in testpypi_workflow
+    assert 'version="$(python scripts/artifact_version.py dist/*)"' in testpypi_workflow
+    assert 'echo "version=$(python' not in testpypi_workflow
     assert '"sparsetune==${VERSION}"' in testpypi_workflow
     assert "VERSION: ${{ steps.package.outputs.version }}" in testpypi_workflow
     assert "sparsetune==0.1.0" not in testpypi_workflow

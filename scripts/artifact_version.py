@@ -50,12 +50,11 @@ def _sdist_version(path: Path) -> str:
 def artifact_version(paths: list[Path]) -> str:
     """Return the common embedded version for one wheel and one sdist."""
 
-    if not paths:
-        raise ValueError("no distribution artifacts were provided")
-    versions = {
-        _wheel_version(path) if path.suffix == ".whl" else _sdist_version(path)
-        for path in paths
-    }
+    wheels = [path for path in paths if path.suffix == ".whl"]
+    sdists = [path for path in paths if path.name.endswith(".tar.gz")]
+    if len(paths) != 2 or len(wheels) != 1 or len(sdists) != 1:
+        raise ValueError("expected exactly one wheel and one sdist")
+    versions = {_wheel_version(wheels[0]), _sdist_version(sdists[0])}
     if len(versions) != 1:
         raise ValueError("artifact versions do not match")
     return versions.pop()

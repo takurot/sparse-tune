@@ -21,7 +21,9 @@ jobs:
       - run: python -m build
       - run: twine check dist/*
       - id: package
-        run: echo "version=$(python scripts/artifact_version.py dist/*)" >> "$GITHUB_OUTPUT"
+        run: |
+          version="$(python scripts/artifact_version.py dist/*)"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
