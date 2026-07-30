@@ -22,7 +22,7 @@
 | 名称 | `sparsetune`（旧 `sparselab` — PyPI 既存パッケージとの競合回避） |
 | パッケージ名 | `sparsetune` (PyPI) |
 | ライセンス | MIT |
-| Python | >= 3.10 |
+| Python | >= 3.10, < 3.15 |
 | リポジトリ | https://github.com/takurot/sparse-tune |
 
 ---
