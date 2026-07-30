@@ -116,6 +116,20 @@ class SolveResult(_Serializable):
     total_seconds: float
     error: str | None
 
+    def to_metrics_dict(self) -> dict[str, Any]:
+        """Return JSON-compatible solve metadata without materializing ``x``."""
+
+        return {
+            item.name: _json_value(getattr(self, item.name))
+            for item in fields(self)
+            if item.name != "x"
+        }
+
+    def to_metrics_json(self) -> str:
+        """Serialize solve metadata without the solution vector."""
+
+        return json.dumps(self.to_metrics_dict())
+
 
 @dataclass
 class MatrixInfo(_Serializable):

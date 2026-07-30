@@ -12,6 +12,7 @@ from sparsetune import (
     MatrixInput,
     Recommendation,
     RunSample,
+    SolveResult,
     SolveStatus,
     SolverResult,
 )
@@ -69,6 +70,33 @@ def test_run_sample_and_solver_result_are_json_serializable() -> None:
     assert payload["status"] == "converged"
     assert payload["samples"][0]["measure"] == "end-to-end"
     assert payload["samples"][0]["status"] == "converged"
+
+
+def test_solve_metrics_serialization_does_not_materialize_solution() -> None:
+    class SolutionWithoutList(np.ndarray):
+        def tolist(self) -> list[float]:
+            raise AssertionError("metrics serialization must not materialize x")
+
+    solution = np.arange(100_000, dtype=np.float64).view(SolutionWithoutList)
+    result = SolveResult(
+        x=solution,
+        backend="scipy:cpu",
+        dtype="float64",
+        status=SolveStatus.CONVERGED,
+        iterations=2,
+        residual_norm=0.0,
+        relative_residual=0.0,
+        convergence_threshold=1.0e-6,
+        setup_seconds=0.01,
+        solve_seconds=0.02,
+        total_seconds=0.03,
+        error=None,
+    )
+
+    payload = result.to_metrics_dict()
+
+    assert "x" not in payload
+    assert payload["status"] == "converged"
 
 
 def test_benchmark_result_serializes_and_finds_recommended_result() -> None:

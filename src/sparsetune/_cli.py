@@ -108,8 +108,16 @@ def _parser() -> argparse.ArgumentParser:
     solve_parser.add_argument("--timeout", type=float, default=300.0)
     solve_parser.add_argument("--assume-spd", action="store_true")
     solve_parser.add_argument("--allow-stale-profile", action="store_true")
-    solve_parser.add_argument("--output", type=Path)
-    solve_parser.add_argument("--quiet", action="store_true")
+    solve_parser.add_argument(
+        "--output",
+        type=Path,
+        help="write the solution vector as Matrix Market",
+    )
+    solve_parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="suppress progress and metrics output",
+    )
 
     doctor_parser = subparsers.add_parser("doctor", help="inspect the environment")
     doctor_parser.add_argument(
@@ -273,7 +281,8 @@ def _run_solve(args: argparse.Namespace) -> int:
         allow_stale_profile=args.allow_stale_profile,
         output=args.output,
     )
-    print(result.to_json())
+    if not args.quiet:
+        print(result.to_metrics_json())
     return 0 if result.status is SolveStatus.CONVERGED else _SOLVE_FAILED
 
 
