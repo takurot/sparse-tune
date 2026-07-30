@@ -346,24 +346,25 @@ sparsetune.list_backends() -> list[str]
 # → ['scipy:cpu', 'cupy:cuda:0']
 
 # 行列読み込み
-sparsetune.load_matrix(path: str) -> SparseMatrix
+sparsetune.load_matrix(path: str | Path) -> CanonicalMatrix
 
 # 行列情報
-sparsetune.inspect(A: SparseMatrix) -> MatrixInfo
+sparsetune.inspect(matrix: MatrixInput, *, path=None) -> MatrixInfo
 
 # ベンチマーク → BenchmarkResult
-sparsetune.benchmark(A, *, backends=None, dtype='float64',
+sparsetune.benchmark(matrix, *, backends=None, dtype='float64',
     measure=('end-to-end','steady-state'),
     runs=5, rtol=1e-6, atol=0.0, max_iter=10000, timeout=300.0,
-    assume_spd=False) -> BenchmarkResult
+    assume_spd=False, rhs=None) -> BenchmarkResult
 
 # チューニング → プロファイル dict
-sparsetune.tune(A, **bench_kwargs) -> Profile
+sparsetune.tune(matrix, *, output=None, **benchmark_options) -> Profile
 
 # プロファイルまたは直接指定で求解
-sparsetune.solve(A, b=None, *, profile=None, backend=None,
-    selection_mode='end-to-end', rtol=1e-6, atol=0.0, max_iter=10000,
-    assume_spd=False) -> SolveResult
+sparsetune.solve(matrix, rhs=None, *, profile=None, backend=None,
+    selection_mode='end-to-end', dtype=None, rtol=None, atol=None,
+    max_iter=None, timeout=300.0, assume_spd=False,
+    allow_stale_profile=False, output=None) -> SolveResult
 ```
 
 ### 5.2 `solve()` — SolveResult を返す
@@ -430,12 +431,15 @@ if result.status == SolveStatus.CONVERGED:
 
 ```python
 @dataclass
-class SparseMatrix:
+class CanonicalMatrix:
     """Sparse matrix in canonical CSR format (CPU-resident)."""
     data: ndarray          # float64 or float32
     indices: ndarray       # int32 column indices
     indptr: ndarray        # int32 row pointers
     shape: tuple[int, int]
+    fingerprint: str
+
+MatrixInput = str | Path | CanonicalMatrix | scipy.sparse.spmatrix
 
 @dataclass
 class MatrixInfo:
@@ -458,7 +462,7 @@ class BenchmarkResult:
     dtype: str
     schema_version: str = '1.0'
 
-    def best(self, mode='end-to-end') -> SolverResult: ...
+    def best(self, mode='end-to-end') -> SolverResult | None: ...
     def to_json(self) -> str: ...
     def to_dict(self) -> dict: ...
 
@@ -484,7 +488,7 @@ class SolverResult:
     relative_residual: float | None
     convergence_threshold: float
     pool_used_gb: float | None       # CuPy pool used_bytes() delta (reference only)
-    status: str            # SolveStatus value
+    status: SolveStatus
     error: str | None
     samples: list[RunSample]
 
@@ -499,7 +503,7 @@ class RunSample:
     residual_norm: float
     relative_residual: float | None
     convergence_threshold: float
-    status: str            # SolveStatus value
+    status: SolveStatus
     error: str | None
     pool_used_gb: float | None
 
@@ -542,7 +546,7 @@ def probe_backend(backend_id: str, dtype: str) -> CapabilityResult:
 class SciPyBackend:
     id = "scipy:cpu"
 
-    def solve_cg(self, A_csr, b, rtol, atol, max_iter):
+    def solve_prepared(self, prepared, *, rtol, atol, max_iter):
         """
         Use scipy.sparse.linalg.cg.
 
@@ -554,9 +558,13 @@ class SciPyBackend:
             nonlocal iterations
             iterations += 1
 
+        # SciPy 1.10/1.11 use tol; current SciPy uses rtol.
+        tolerance = {"rtol": rtol, "atol": atol}
+        if "rtol" not in inspect.signature(scipy.sparse.linalg.cg).parameters:
+            tolerance = {"tol": rtol, "atol": atol}
         x, info = scipy.sparse.linalg.cg(
-            A_csr, b, rtol=rtol, atol=atol,
-            maxiter=max_iter, callback=callback
+            prepared.matrix, prepared.rhs,
+            maxiter=max_iter, callback=callback, **tolerance
         )
         return x, info, iterations
 ```
@@ -760,7 +768,7 @@ def _make_result(mode, elapsed, x, info, iterations, A_csr, b, config):
 独自の対称展開は不要（二重展開のバグになる）。
 
 ```python
-def load_matrix(path: str) -> SparseMatrix:
+def load_matrix(path: str | Path) -> CanonicalMatrix:
     """
     Load Matrix Market coordinate file. Canonicalize to sorted CSR.
     """
@@ -768,17 +776,19 @@ def load_matrix(path: str) -> SparseMatrix:
     A = A.tocsr()                      # Convert to CSR
     A.sum_duplicates()                 # Merge duplicate entries
     A.sort_indices()                   # Sort column indices per row
-    return SparseMatrix(
-        data=A.data.astype(np.float64),
-        indices=A.indices.astype(np.int32),
-        indptr=A.indptr.astype(np.int32),
-        shape=A.shape,
+    canonical = scipy.sparse.csr_matrix(A, dtype=np.float64)
+    return CanonicalMatrix(
+        data=canonical.data.astype(np.float64),
+        indices=canonical.indices.astype(np.int32),
+        indptr=canonical.indptr.astype(np.int32),
+        shape=canonical.shape,
+        fingerprint=fingerprint_csr(canonical),
     )
 ```
 
 **サポートフォーマット:**
 - Matrix Market coordinate (real, integer)
-- square 行列のみ
+- `inspect` は非正方行列も読み込む。`bench`、`tune`、`solve` は square 行列のみ
 - `symmetric` / `general` / `skew-symmetric`
 
 **非サポート（v0.1）:**
@@ -893,23 +903,23 @@ def validate_solution(A_csr, x, b) -> float:
 ### 9.4 CG 終了理由の判定
 
 ```python
-def info_to_status(info: int, x: ndarray, residual: float, tol: float) -> str:
+def info_to_status(
+    info: int,
+    x: ndarray,
+    residual: float,
+    threshold: float,
+) -> SolveStatus:
     """Map scipy/cupy CG info code to SolveStatus."""
-    if info == 0:
-        # Double-check: sometimes info=0 but residual is still high
-        if residual <= tol:
-            return "converged"
-        else:
-            return "max_iter"
-    elif info > 0:
-        return "max_iter"
-    elif info < 0:
-        # Illegal input or breakdown (non-positive curvature, etc.)
-        return "breakdown"
-
     if not np.all(np.isfinite(x)):
-        return "nan_inf"
-    return "internal_error"
+        return SolveStatus.NAN_INF
+
+    if info == 0:
+        if residual <= threshold:
+            return SolveStatus.CONVERGED
+        return SolveStatus.ACCURACY_FAILED
+    if info > 0:
+        return SolveStatus.MAX_ITER
+    return SolveStatus.BREAKDOWN
 ```
 
 ### 9.5 自動選択ロジック
@@ -1087,88 +1097,34 @@ pip install cupy-cuda12x
 
 ### 12.1 テスト階層
 
-```
-tests/
-├── unit/
-│   ├── test_matrix.py       # load_matrix, mmread canonicalization
-│   ├── test_inspect.py      # MatrixInfo, SPD diagnosis
-│   ├── test_autoselect.py   # recommend() logic (mock results)
-│   └── test_profile.py      # Profile serialization
-├── integration/
-│   ├── test_cli.py          # CLI end-to-end
-│   ├── test_api.py          # Python API
-│   └── test_subprocess.py   # subprocess runner
-└── fixtures/
-    ├── small_spd.mtx         # 10×10 SPD
-    ├── small_symmetric.mtx   # 10×10 symmetric (mmread 展開確認用)
-    ├── small_nonsquare.mtx   # 非正方（エラーケース）
-    └── indefinite.mtx        # 対称・対角正だが非正定値（[[1,2],[2,1]]）
-```
+テストは `tests/unit/`（型、行列、診断、backend、runner、benchmark、
+profile、文書契約）、`tests/integration/`（CLI、package、subprocess、GPU）、
+`tests/fixtures/`（Matrix Market fixtures）に分ける。ファイル名は変化しやすいため
+ここには固定の tree snapshot を置かず、`git ls-files tests` を正とする。
 
 ### 12.2 重要なテストケース
 
 | テスト | 内容 |
 |--------|------|
-| `test_mmread_symmetric_already_expanded` | symmetric Matrix Market を mmread 後、二重展開されていないことを確認 |
-| `test_mmread_returns_COO_not_CSR` | mmread の返り値が COO であることを確認、.tocsr() が必要 |
-| `test_positive_diagonal_not_spd` | [[1,2],[2,1]] が spd_status='screen_passed' だが実際は非正定値 |
-| `test_reject_nonsquare` | 非正方行列は spd_status='failed' で CG 拒否 |
-| `test_assume_spd_required_for_unknown` | spd_status='unknown' は --assume-spd なしで拒否 |
-| `test_autoselect_fastest_converged` | 収束結果から最速を選ぶ（実GPUテスト不要、モックで検証） |
-| `test_subprocess_timeout` | タイムアウト時に worker が kill される |
-| `test_subprocess_oom_graceful` | OOM 時にエラーステータスが返る |
-| `test_profile_roundtrip` | tune → save → load → solve が一致 |
+| `test_load_matrix_does_not_expand_symmetric_input_twice` | symmetric Matrix Market を二重展開しない |
+| `test_load_matrix_sums_duplicates_and_sorts_csr_indices` | duplicate を合算し、CSR index をsortする |
+| `test_positive_diagonal_screening_does_not_prove_positive_definiteness` | 正の対角だけでは正定値性を証明しない |
+| `test_solve_and_benchmark_still_reject_nonsquare_paths` | 診断可能な非正方行列も CG 実行では拒否する |
+| `test_only_unknown_status_can_be_overridden` | `unknown` だけを `assume_spd` でoverrideできる |
+| `test_recommend_selects_fastest_converged_result_per_mode` | modeごとに収束結果から最速を選ぶ |
+| `test_timeout_becomes_structured_status` | timeoutを親processの異常終了にしない |
+| worker OOM mapping tests | `MemoryError` と backend OOM を `oom` に分類する |
+| `test_real_tune_save_load_solve_round_trip` | tune → save → load → solve を実processで検証する |
 
 ### 12.3 GPU テスト分離
 
 - GPU テストは `pytest.mark.gpu` でマーク
 - CI では CPU テストのみ実行
-- GPU テストでは「CuPy が選ばれること」ではなく「有効な結果が返り、残差が tol 以下であること」を検証
+- GPU テストでは「CuPy が選ばれること」ではなく「有効な結果が返り、残差が収束閾値以下であること」を検証
 
 ---
 
-## 13. プロジェクト構成
-
-```
-sparsetune/
-├── pyproject.toml
-├── README.md
-├── LICENSE                 # Apache 2.0
-├── .gitignore
-├── src/
-│   └── sparsetune/
-│       ├── __init__.py     # __version__ = "0.1.0"
-│       ├── _matrix.py      # load_matrix, canonicalize
-│       ├── _inspect.py     # diagnose_matrix, MatrixInfo
-│       ├── _backends.py    # SciPyBackend, CuPyBackend, probe
-│       ├── _runner.py      # SubprocessRunner
-│       ├── _worker.py      # Subprocess worker entry point
-│       ├── _benchmark.py   # benchmark, recommend
-│       ├── _profile.py     # tune, solve, Profile cache
-│       ├── _cli.py         # CLI
-│       └── _types.py       # Data classes, SolveStatus
-├── tests/
-│   ├── unit/
-│   │   ├── test_matrix.py
-│   │   ├── test_inspect.py
-│   │   ├── test_autoselect.py
-│   │   └── test_profile.py
-│   ├── integration/
-│   │   ├── test_cli.py
-│   │   ├── test_api.py
-│   │   └── test_subprocess.py
-│   └── fixtures/
-│       ├── small_spd.mtx
-│       ├── small_symmetric.mtx
-│       ├── small_nonsquare.mtx
-│       └── indefinite.mtx
-└── docs/
-    └── SPEC.md
-```
-
----
-
-## 14. 非スコープ（v0.1）
+## 13. 非スコープ（v0.1）
 
 - PyTorch バックエンド
 - MPS / Apple Silicon
@@ -1188,7 +1144,7 @@ sparsetune/
 
 ---
 
-## 15. マイルストーン
+## 14. マイルストーン
 
 | バージョン | 内容 | 目標期間 |
 |-----------|------|---------|
@@ -1199,7 +1155,7 @@ sparsetune/
 
 ---
 
-## 16. リスク
+## 15. リスク
 
 | リスク | 深刻度 | 対策 |
 |--------|--------|------|
@@ -1211,7 +1167,7 @@ sparsetune/
 
 ---
 
-## 17. レビュー履歴
+## 16. レビュー履歴
 
 | 日付 | レビューア | 結果 | 主な指摘・変更 |
 |------|-----------|------|-------------|

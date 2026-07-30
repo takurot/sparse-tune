@@ -18,7 +18,7 @@ workers, and reuse the selected backend through a tuning profile.
   API.
 - Versioned profile validation for matrix, solver configuration, environment,
   and GPU identity.
-- Python 3.10-3.12 CPU CI, 80% coverage gate, wheel smoke tests, and Trusted
+- Python 3.10-3.14 CPU CI, 80% coverage gate, wheel smoke tests, and Trusted
   Publishing workflows.
 
 ## Validation

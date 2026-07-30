@@ -37,8 +37,9 @@
 | ソルバ | 各バックエンドのネイティブ CG |
 | 入力 | Matrix Market coordinate（real / integer） |
 
-v0.1.0 では正方行列のみを対象とし、複素数、密行列形式、マルチ GPU、
-マルチ RHS、PyTorch、MPS、GMRES、BiCGSTAB、直接法は対象外です。
+`inspect` は非正方行列も受け付け、形状と構造を診断します。CG を実行する
+`bench`、`tune`、`solve` は正方行列だけを対象とします。複素数、密行列形式、
+マルチ GPU、マルチ RHS、PyTorch、MPS、GMRES、BiCGSTAB、直接法は対象外です。
 
 ## インストール
 
@@ -185,7 +186,7 @@ else:
 - coordinate 形式
 - real または integer
 - `symmetric`、`general`、`skew-symmetric`
-- 正方行列
+- `inspect` では非正方行列も可。`bench`、`tune`、`solve` では正方行列
 
 CG は対称正定値（SPD）行列向けの反復法です。`sparsetune` の事前診断は、
 対称性と正の対角成分を確認するスクリーニングであり、正定値性を証明しません。
@@ -289,6 +290,8 @@ backend identityとして記録します。取得できないportable fieldは `
 明示的なstale-profile opt-inが必要です。
 
 ## ロードマップ
+
+次の項目は計画であり、上記の v0.1.0 の対応範囲には含まれません。
 
 | バージョン | 予定内容 |
 | --- | --- |
