@@ -14,7 +14,8 @@
 > [!IMPORTANT]
 > v0.1.0 は PyPI から利用できます。実GPUでの機能検証には
 > [Google Colab GPU validation notebook](notebooks/colab_gpu_validation.ipynb)を
-> 使用できます。
+> 使用できます。2026-07-26 の Tesla T4 実行結果は
+> [GPU機能検証レポート](docs/GPU_VALIDATION.md)にまとめています。
 
 ## 主な特徴
 
@@ -305,6 +306,7 @@ backend identityとして記録します。取得できないportable fieldは `
 - [機能仕様書 SPEC v2.1](docs/SPEC.md)
 - [開発ワークフロー](docs/WORKFLOW.md)
 - [v0.1.0 検証レポート](docs/VALIDATION.md)
+- [Tesla T4 GPU機能検証レポート](docs/GPU_VALIDATION.md)
 - [v0.1.0 リリースノート](RELEASE_NOTES.md)
 - [Google Colab GPU validation notebook](notebooks/colab_gpu_validation.ipynb)
 

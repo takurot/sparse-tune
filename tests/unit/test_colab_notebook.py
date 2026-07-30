@@ -87,6 +87,34 @@ def test_readme_links_to_colab_notebook() -> None:
     assert "colab.research.google.com/github/takurot/sparse-tune/blob/main/" in readme
 
 
+def test_tracked_gpu_validation_summary_records_scope_and_reproduction() -> None:
+    summary_path = ROOT / "docs" / "GPU_VALIDATION.md"
+    summary = summary_path.read_text(encoding="utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    validation = (ROOT / "docs" / "VALIDATION.md").read_text(encoding="utf-8")
+
+    for fragment in (
+        "Tesla T4",
+        "Python 3.12.13",
+        "SciPy 1.16.3",
+        "CuPy 14.1.1",
+        "float64",
+        "rtol=1e-6",
+        "relative residual",
+        "single-session functional validation",
+        "physical GPU OOM",
+        "multi-GPU",
+        "CUDA 13",
+        "cross-device",
+        "notebooks/colab_gpu_validation.ipynb",
+        "colab_gpu_validation_results.json",
+    ):
+        assert fragment in summary
+
+    assert "docs/GPU_VALIDATION.md" in readme
+    assert "GPU_VALIDATION.md" in validation
+
+
 def test_colab_notebook_compares_relative_residual_with_rtol() -> None:
     notebook = _load_notebook()
     code_source = "\n".join(_sources(notebook, "code"))
