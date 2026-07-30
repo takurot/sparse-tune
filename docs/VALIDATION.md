@@ -8,6 +8,10 @@ This report records release-candidate validation on public sparse matrices. It
 separates measured results from checks that require hardware or credentials not
 available in the validation environment.
 
+A later single-session Tesla T4 run is recorded separately in the
+[GPU functional validation report](GPU_VALIDATION.md). That report is
+functional evidence, not a stable performance baseline.
+
 ## Method
 
 The matrices came from the
