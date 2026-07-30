@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: test-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -12,6 +16,8 @@ jobs:
   minimum-dependencies:
     name: Minimum dependencies / Python 3.10
     runs-on: ubuntu-latest
+    # Bounds dependency installation and the minimum-version CPU suite.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -34,6 +40,8 @@ jobs:
   cpu:
     name: CPU / Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
+    # Bounds each Python-version test, coverage, and lint matrix job.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -56,6 +64,8 @@ jobs:
   distribution:
     name: Distribution
     runs-on: ubuntu-latest
+    # Bounds package build, validation, and clean-wheel smoke checks.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
