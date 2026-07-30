@@ -10,6 +10,8 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # Bounds build, artifact checks, and the production OIDC upload.
+    timeout-minutes: 15
     environment: pypi
     permissions:
       id-token: write

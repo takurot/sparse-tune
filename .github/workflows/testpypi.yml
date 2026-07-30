@@ -9,6 +9,8 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # Bounds build, OIDC upload, and the TestPyPI installation smoke check.
+    timeout-minutes: 20
     environment: testpypi
     permissions:
       id-token: write
