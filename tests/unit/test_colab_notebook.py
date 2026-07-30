@@ -47,7 +47,7 @@ def test_colab_notebook_covers_the_gpu_validation_contract() -> None:
     all_source = "\n".join(_sources(notebook, "markdown") + _sources(notebook, "code"))
 
     required_fragments = (
-        "sparsetune==0.1.0",
+        "sparsetune==0.1.11",
         "cupy-cuda12x",
         "cupy-cuda13x",
         "nvidia-smi",

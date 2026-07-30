@@ -69,7 +69,7 @@ Python 3.10〜3.14をサポートし、CIで各versionを継続検証します�
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/takurot/sparse-tune/blob/main/notebooks/colab_gpu_validation.ipynb)
 
-このノートブックはproduction PyPIの `sparsetune==0.1.0` をインストールし、割り当てられた
+このノートブックはproduction PyPIの `sparsetune==0.1.11` をインストールし、割り当てられた
 NVIDIA GPU上でCPU/GPUの収束、相対残差、計測結果、推奨を検証してJSONへ保存します。
 ColabのGPU、CPU割り当て、クロック、セッション寿命は変動するため、結果は機能検証であり、
 安定した性能ベースラインではありません。

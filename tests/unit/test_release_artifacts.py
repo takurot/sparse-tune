@@ -3,7 +3,6 @@ from __future__ import annotations
 from io import BytesIO
 from pathlib import Path
 import tarfile
-import tomllib
 import zipfile
 
 import pytest
@@ -81,15 +80,16 @@ def test_python_policy_and_workflows_stay_aligned() -> None:
 
 def test_v011_release_metadata_is_consistent() -> None:
     root = Path(__file__).parents[2]
-    project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    project = (root / "pyproject.toml").read_text(encoding="utf-8")
     package = (root / "src/sparsetune/__init__.py").read_text(encoding="utf-8")
     readme = (root / "README.md").read_text(encoding="utf-8")
     release_notes = (root / "RELEASE_NOTES.md").read_text(encoding="utf-8")
 
-    assert project["project"]["version"] == "0.1.11"
+    assert 'version = "0.1.11"' in project
     assert '__version__ = "0.1.11"' in package
     assert "**開発状況:** v0.1.11" in readme
     assert 'pip install "sparsetune==0.1.11"' in readme
+    assert "sparsetune==0.1.0" not in readme
     assert "| 項目 | v0.1.11 |" in readme
     assert "# sparsetune 0.1.11" in release_notes
 

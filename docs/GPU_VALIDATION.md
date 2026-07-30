@@ -54,17 +54,20 @@ cross-device or cross-machine performance claims.
 
 ## Reproduction and evidence
 
-Open the
-[tracked notebook](../notebooks/colab_gpu_validation.ipynb) in a Colab GPU
-runtime and run all cells. The notebook installs the production package and
-the single CUDA-matched CuPy distribution, records runtime and package
-identity, validates every result, and writes
+The immutable
+[0.1.0 notebook](https://github.com/takurot/sparse-tune/blob/21bb472976a880bd845675f8eef9338917875368/notebooks/colab_gpu_validation.ipynb)
+reproduces this report's package selection and method. The
+[current tracked notebook](../notebooks/colab_gpu_validation.ipynb) uses the
+same method for the current release. Open the relevant notebook in a Colab GPU
+runtime and run all cells. It installs the production package and the single
+CUDA-matched CuPy distribution, records runtime and package identity, validates
+every result, and writes
 `colab_gpu_validation_results.json`. Download that file when prompted.
 
 The raw JSON remains intentionally omitted from version control because it is
-a generated, session-specific artifact and `temp/` is gitignored. The notebook
-is the authoritative regeneration path; this tracked report summarizes the
-2026-07-26 artifact retained locally under
+a generated, session-specific artifact and `temp/` is gitignored. The immutable
+0.1.0 notebook is the authoritative regeneration path for this tracked report,
+which summarizes the 2026-07-26 artifact retained locally under
 `temp/colab_gpu_validation_results.json`.
 
 This session did not test physical GPU OOM, multi-GPU execution, a CuPy CUDA 13
