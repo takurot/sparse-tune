@@ -11,7 +11,7 @@ import sys
 from typing import Any, Sequence
 
 from . import __version__
-from ._benchmark import _environment, benchmark, list_backends
+from ._benchmark import _environment, _probe_backend, benchmark, list_backends
 from ._inspect import diagnose_matrix
 from ._profile import ProfileMismatchError, solve, tune
 from ._types import BenchmarkResult, MatrixInfo, SolveStatus
@@ -192,10 +192,16 @@ def _benchmark_table(report: BenchmarkResult) -> str:
 def environment_info() -> dict[str, Any]:
     """Return doctor information only when explicitly requested."""
 
+    backends = list_backends()
+    identities = {}
+    for backend in backends:
+        error, identity = _probe_backend(backend, "float64")
+        if error is None and identity is not None:
+            identities[backend] = identity
     return {
         "version": __version__,
-        **_environment(),
-        "backends": list_backends(),
+        **_environment(identities),
+        "backends": backends,
     }
 
 

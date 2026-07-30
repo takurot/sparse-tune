@@ -34,9 +34,8 @@ _STALE_ENVIRONMENT_FIELDS = (
     "numpy",
     "scipy",
     "cpu_model",
+    "cpu_cores_physical",
     "blas_implementation",
-    "cuda_driver",
-    "cupy_version",
 )
 
 
@@ -49,9 +48,7 @@ def _current_environment() -> dict[str, Any]:
 
 
 def _runtime_identity(backend_id: str) -> dict[str, Any]:
-    if backend_id == "scipy:cpu":
-        return {"kind": "cpu"}
-    if not backend_id.startswith("cupy:cuda:"):
+    if backend_id != "scipy:cpu" and not backend_id.startswith("cupy:cuda:"):
         raise ProfileMismatchError(f"Backend is unavailable: {backend_id}")
     error, identity = _probe_backend(backend_id, "float64")
     if error is not None or identity is None:
@@ -132,10 +129,12 @@ def validate_profile(
         if not isinstance(stored_identity, dict):
             raise ProfileMismatchError(f"Profile backend identity invalid: {backend}")
         current_identity = _runtime_identity(backend)
-        if backend.startswith("cupy:") and stored_identity.get(
-            "gpu_uuid"
-        ) != current_identity.get("gpu_uuid"):
-            raise ProfileMismatchError("Profile GPU UUID mismatch")
+        if stored_identity != current_identity:
+            if backend.startswith("cupy:") and stored_identity.get(
+                "gpu_uuid"
+            ) != current_identity.get("gpu_uuid"):
+                raise ProfileMismatchError("Profile GPU UUID mismatch")
+            raise ProfileMismatchError(f"Profile backend identity mismatch: {backend}")
 
     stored_environment = profile.get("environment")
     if not isinstance(stored_environment, dict):
@@ -144,9 +143,7 @@ def validate_profile(
     changes = [
         name
         for name in _STALE_ENVIRONMENT_FIELDS
-        if name in stored_environment
-        and name in current_environment
-        and stored_environment[name] != current_environment[name]
+        if stored_environment.get(name) != current_environment.get(name)
     ]
     if changes and not allow_stale_profile:
         raise ProfileMismatchError(
@@ -195,8 +192,6 @@ def tune(
         identity = reported_identity.get(result.backend)
         if isinstance(identity, dict):
             backend_identity[result.backend] = identity
-        elif result.backend == "scipy:cpu":
-            backend_identity[result.backend] = {"kind": "cpu"}
         else:
             raise ProfileMismatchError(f"Backend identity is missing: {result.backend}")
     profile: Profile = {

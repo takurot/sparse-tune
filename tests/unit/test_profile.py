@@ -47,6 +47,14 @@ def _solver_result(backend: str = "scipy:cpu") -> SolverResult:
 def _report(matrix: csr_matrix) -> BenchmarkResult:
     info = diagnose_matrix(matrix)
     result = _solver_result()
+    identity = {
+        "backend": "scipy:cpu",
+        "kind": "cpu",
+        "scipy_version": "1.14",
+        "cpu_model": "example",
+        "cpu_cores_physical": 4,
+        "blas_implementation": "OpenBLAS",
+    }
     return BenchmarkResult(
         matrix=info,
         environment={
@@ -54,6 +62,9 @@ def _report(matrix: csr_matrix) -> BenchmarkResult:
             "numpy": "2.0",
             "scipy": "1.14",
             "cpu_model": "example",
+            "cpu_cores_physical": 4,
+            "blas_implementation": "OpenBLAS",
+            "backend_identity": {"scipy:cpu": identity},
         },
         results=[result],
         recommendations={
@@ -91,7 +102,16 @@ def _profile(matrix: csr_matrix) -> dict[str, object]:
         "recommendations": {
             key: value.to_dict() for key, value in report.recommendations.items()
         },
-        "backend_identity": {"scipy:cpu": {"kind": "cpu"}},
+        "backend_identity": {
+            "scipy:cpu": {
+                "backend": "scipy:cpu",
+                "kind": "cpu",
+                "scipy_version": "1.14",
+                "cpu_model": "example",
+                "cpu_cores_physical": 4,
+                "blas_implementation": "OpenBLAS",
+            }
+        },
     }
 
 
@@ -242,6 +262,49 @@ def test_validate_profile_rejects_gpu_uuid_mismatch(
         )
 
 
+def test_validate_profile_rejects_critical_backend_identity_change(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    matrix = csr_matrix([[4.0, 1.0], [1.0, 3.0]])
+    profile = _profile(matrix)
+    monkeypatch.setattr(
+        "sparsetune._profile._runtime_identity",
+        lambda _backend: {
+            **profile["backend_identity"]["scipy:cpu"],
+            "blas_implementation": "MKL",
+        },
+    )
+    monkeypatch.setattr(
+        "sparsetune._profile._current_environment",
+        lambda: profile["environment"],
+    )
+
+    with pytest.raises(ProfileMismatchError, match="backend identity"):
+        validate_profile(
+            profile,
+            diagnose_matrix(matrix),
+            backend="scipy:cpu",
+        )
+
+
+def test_validate_profile_treats_missing_stale_field_deterministically(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    matrix = csr_matrix([[4.0, 1.0], [1.0, 3.0]])
+    profile = _profile(matrix)
+    del profile["environment"]["blas_implementation"]
+    monkeypatch.setattr(
+        "sparsetune._profile._current_environment",
+        lambda: {
+            **profile["environment"],
+            "blas_implementation": "OpenBLAS",
+        },
+    )
+
+    with pytest.raises(ProfileMismatchError, match="stale"):
+        validate_profile(profile, diagnose_matrix(matrix))
+
+
 def test_solve_profile_selects_requested_mode_without_benchmarking(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -255,7 +318,7 @@ def test_solve_profile_selects_requested_mode_without_benchmarking(
     )
     monkeypatch.setattr(
         "sparsetune._profile._runtime_identity",
-        lambda _backend: {"kind": "cpu"},
+        lambda backend: profile["backend_identity"][backend],
     )
 
     def fake_run(
@@ -306,6 +369,10 @@ def test_scipy_profile_solve_does_not_probe_cupy_in_parent(
             _solver_result("scipy:cpu"),
             np.asarray([1.0, 1.0]),
         ),
+    )
+    monkeypatch.setattr(
+        "sparsetune._profile._runtime_identity",
+        lambda backend: profile["backend_identity"][backend],
     )
 
     result = solve(matrix, profile=profile, allow_stale_profile=True)

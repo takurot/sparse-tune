@@ -164,7 +164,26 @@ sparsetune bench <matrix_file> [options]
     "dtype": "float64"
   },
   "environment": {
-    "python": "3.12.4"
+    "os": "Linux-6.8.0-x86_64",
+    "python": "3.12.4",
+    "cpu_model": "Example CPU",
+    "cpu_cores": 16,
+    "cpu_cores_physical": 8,
+    "blas_implementation": "OpenBLAS 0.3.28",
+    "numpy": "2.1.0",
+    "scipy": "1.14.1",
+    "gpu_backends": [],
+    "gpu_packages": {},
+    "backend_identity": {
+      "scipy:cpu": {
+        "backend": "scipy:cpu",
+        "kind": "cpu",
+        "scipy_version": "1.14.1",
+        "cpu_model": "Example CPU",
+        "cpu_cores_physical": 8,
+        "blas_implementation": "OpenBLAS 0.3.28"
+      }
+    }
   },
   "results": [
     {
@@ -224,6 +243,13 @@ sparsetune bench <matrix_file> [options]
 およびprofileのbenchmark部分は、このschema 1.0を共通で使用する。profileは同じ
 top-levelの `matrix`、`environment`、`results`、`recommendations` に
 `config` と `backend_identity` を追加する。
+
+`environment` は常に `cpu_model`、`cpu_cores_physical`、
+`blas_implementation` を含み、取得できない値は `null` とする。
+`backend_identity` は能力プローブに成功したbackendごとの互換性IDである。
+CPUは上記3フィールドとSciPy version、GPUは `gpu_uuid`、`gpu_model`、
+`cuda_driver`、`cuda_runtime`、`cupy_version` を同じ名前で記録する。
+doctor、benchmark、profileはこのfield名を共通で使用する。
 
 初期のv0.1.x Python APIは、CLIが付加していた `schema_version` と
 `matrix.dtype` を `BenchmarkResult.to_dict()/to_json()` では省略していた。
@@ -986,10 +1012,16 @@ def validate_profile(profile: Profile, matrix_info: MatrixInfo, config: dict):
             f"Profile dtype {profile['matrix']['dtype']} != requested {config['dtype']}"
         )
 
-    # Backend version check (warning, not error)
-    if profile['environment']['cupy_version'] != env.cupy_version:
-        warnings.warn(f"CuPy version changed: {profile['environment']['cupy_version']} → {env.cupy_version}")
+    # 選択backendの完全なidentity変更はhard mismatch。
+    # Python/NumPy/SciPy/CPU/BLASの変更はstale profileとして明示的な
+    # allow_stale_profile指定がある場合だけwarning付きで許可する。
 ```
+
+互換性判定では、選択backendの `backend_identity` は完全一致を要求する。
+また `python`、`numpy`、`scipy`、`cpu_model`、`cpu_cores_physical`、
+`blas_implementation` をstale判定対象とする。保存側でfieldが欠落し、現在値が
+存在する場合も変更として扱う。値を取得できない環境では明示的な `null` 同士を
+同一として扱う。
 
 ### 10.4 CLI
 

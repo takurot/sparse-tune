@@ -9,7 +9,7 @@ import pytest
 from scipy.sparse import csr_matrix
 
 from sparsetune import RunSample, SolveStatus, SolverResult, benchmark
-from sparsetune._benchmark import _probe_backend, recommend
+from sparsetune._benchmark import _environment, _probe_backend, recommend
 
 
 def _result(
@@ -289,6 +289,71 @@ def test_probe_accepts_validated_cuda_identity(
     )
 
     error, parsed = _probe_backend("cupy:cuda:0", "float64")
+
+    assert error is None
+    assert parsed == identity
+
+
+def test_environment_prefers_validated_cpu_backend_identity() -> None:
+    backend_identity = {
+        "scipy:cpu": {
+            "backend": "scipy:cpu",
+            "kind": "cpu",
+            "scipy_version": "1.14.0",
+            "cpu_model": "Example CPU",
+            "cpu_cores_physical": 4,
+            "blas_implementation": "OpenBLAS 0.3.30",
+        }
+    }
+
+    environment = _environment(backend_identity)
+
+    assert environment["cpu_model"] == "Example CPU"
+    assert environment["cpu_cores_physical"] == 4
+    assert environment["blas_implementation"] == "OpenBLAS 0.3.30"
+    assert environment["backend_identity"] == backend_identity
+
+
+def test_environment_uses_local_cpu_identity_without_cpu_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    local_identity = {
+        "cpu_model": "Local CPU",
+        "cpu_cores_physical": 2,
+        "blas_implementation": None,
+    }
+    monkeypatch.setattr(
+        "sparsetune._benchmark.cpu_identity",
+        lambda: local_identity,
+    )
+
+    environment = _environment()
+
+    assert {name: environment[name] for name in local_identity} == local_identity
+
+
+def test_probe_accepts_validated_cpu_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    identity = {
+        "backend": "scipy:cpu",
+        "kind": "cpu",
+        "scipy_version": "1.14.0",
+        "cpu_model": None,
+        "cpu_cores_physical": None,
+        "blas_implementation": "OpenBLAS",
+    }
+    monkeypatch.setattr(
+        "sparsetune._benchmark.subprocess.run",
+        lambda *_a, **_k: subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=json.dumps(identity),
+            stderr="",
+        ),
+    )
+
+    error, parsed = _probe_backend("scipy:cpu", "float64")
 
     assert error is None
     assert parsed == identity
