@@ -321,7 +321,7 @@ def test_doctor_and_version_are_available(
     with pytest.raises(SystemExit) as version:
         main(["--version"])
     assert version.value.code == 0
-    assert capsys.readouterr().out == "0.1.0\n"
+    assert capsys.readouterr().out == "0.1.11\n"
 
 
 def test_doctor_reports_validated_backend_identity(

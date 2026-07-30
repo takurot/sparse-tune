@@ -1,7 +1,7 @@
 # sparsetune
 
-> **開発状況:** v0.1.0
-> **最終更新:** 2026-07-26
+> **開発状況:** v0.1.11
+> **最終更新:** 2026-07-31
 
 `sparsetune` は、ユーザーの疎行列に対して利用可能な CPU / GPU 線形ソルバを
 隔離環境で比較し、再現可能な性能・精度レポートと推奨構成を生成する
@@ -12,7 +12,7 @@
 バックエンドを選びます。
 
 > [!IMPORTANT]
-> v0.1.0 は PyPI から利用できます。実GPUでの機能検証には
+> v0.1.11 は PyPI から利用できます。実GPUでの機能検証には
 > [Google Colab GPU validation notebook](notebooks/colab_gpu_validation.ipynb)を
 > 使用できます。2026-07-26 の Tesla T4 実行結果は
 > [GPU機能検証レポート](docs/GPU_VALIDATION.md)にまとめています。
@@ -29,7 +29,7 @@
 
 ## 対応環境
 
-| 項目 | v0.1.0 |
+| 項目 | v0.1.11 |
 | --- | --- |
 | Python | 3.10–3.14 |
 | CPU バックエンド | SciPy (`scipy:cpu`) |
@@ -47,17 +47,17 @@
 PyPI から CPU 版をインストールできます。
 
 ```bash
-pip install sparsetune
+pip install "sparsetune==0.1.11"
 ```
 
 CUDA を利用する場合は、環境に合う追加依存関係を指定します。
 
 ```bash
 # CUDA 12.x
-pip install "sparsetune[cuda12]"
+pip install "sparsetune[cuda12]==0.1.11"
 
 # CUDA 13.x
-pip install "sparsetune[cuda13]"
+pip install "sparsetune[cuda13]==0.1.11"
 ```
 
 Python 3.10〜3.14をサポートし、CIで各versionを継続検証します。
@@ -69,7 +69,7 @@ Python 3.10〜3.14をサポートし、CIで各versionを継続検証します�
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/takurot/sparse-tune/blob/main/notebooks/colab_gpu_validation.ipynb)
 
-このノートブックはproduction PyPIの `sparsetune==0.1.0` をインストールし、割り当てられた
+このノートブックはproduction PyPIの `sparsetune==0.1.11` をインストールし、割り当てられた
 NVIDIA GPU上でCPU/GPUの収束、相対残差、計測結果、推奨を検証してJSONへ保存します。
 ColabのGPU、CPU割り当て、クロック、セッション寿命は変動するため、結果は機能検証であり、
 安定した性能ベースラインではありません。
@@ -292,12 +292,12 @@ backend identityとして記録します。取得できないportable fieldは `
 
 ## ロードマップ
 
-次の項目は計画であり、上記の v0.1.0 の対応範囲には含まれません。
+次の項目は計画であり、上記の v0.1.11 の対応範囲には含まれません。
 
 | バージョン | 予定内容 |
 | --- | --- |
-| v0.1.0 | SciPy / CuPy、ネイティブ CG、隔離実行、CLI、プロファイル |
-| v0.1.1 | README、CI/CD、検証手順の継続改善 |
+| v0.1.0 | SciPy / CuPy、ネイティブ CG、隔離実行、CLI、プロファイル（リリース済み） |
+| v0.1.11 | 互換性・入力検証・再現性・CI/CD・GPU検証の強化（リリース済み） |
 | v0.2.0 | PyTorch CUDA、GMRES / BiCGSTAB、メモリ測定改善 |
 | v0.3.0 | MPS 実験対応、統一 CG、AMGX の検討 |
 
@@ -307,7 +307,7 @@ backend identityとして記録します。取得できないportable fieldは `
 - [開発ワークフロー](docs/WORKFLOW.md)
 - [v0.1.0 検証レポート](docs/VALIDATION.md)
 - [Tesla T4 GPU機能検証レポート](docs/GPU_VALIDATION.md)
-- [v0.1.0 リリースノート](RELEASE_NOTES.md)
+- [v0.1.11 リリースノート](RELEASE_NOTES.md)
 - [Google Colab GPU validation notebook](notebooks/colab_gpu_validation.ipynb)
 
 ## ライセンス

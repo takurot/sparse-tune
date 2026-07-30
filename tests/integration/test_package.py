@@ -32,5 +32,5 @@ def test_import_is_quiet_and_does_not_import_cupy() -> None:
         text=True,
     )
 
-    assert completed.stdout == "0.1.0\n"
+    assert completed.stdout == "0.1.11\n"
     assert completed.stderr == ""
