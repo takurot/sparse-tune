@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import re
 
+import sparsetune
 from sparsetune import MatrixInfo, Recommendation, RunSample, SolverResult
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -75,3 +76,39 @@ def test_readme_recommendation_examples_match_live_shape() -> None:
     assert len(recommendations) == 2
     recommendation_keys = {field.name for field in fields(Recommendation)}
     assert all(set(example) == recommendation_keys for example in recommendations)
+
+
+def test_documented_public_api_and_repository_facts_match_runtime() -> None:
+    readme = (_PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
+    spec = (_PROJECT_ROOT / "docs" / "SPEC.md").read_text(encoding="utf-8")
+    workflow = (_PROJECT_ROOT / "docs" / "WORKFLOW.md").read_text(encoding="utf-8")
+    release_notes = (_PROJECT_ROOT / "RELEASE_NOTES.md").read_text(encoding="utf-8")
+
+    for public_name in (
+        "list_backends",
+        "load_matrix",
+        "inspect",
+        "benchmark",
+        "tune",
+        "solve",
+    ):
+        assert public_name in sparsetune.__all__
+        assert f"`{public_name}()`" in readme
+
+    assert "CanonicalMatrix" in spec
+    assert "SparseMatrix" not in spec
+    assert "LICENSE                 # Apache 2.0" not in spec
+    assert "test_autoselect.py" not in spec
+    assert "test_api.py" not in spec
+    assert "## 13. プロジェクト構成" not in spec
+    assert "## 10. 現在のプロジェクト構成" not in workflow
+    assert "Python 3.10-3.14 CPU CI" in release_notes
+
+
+def test_docs_distinguish_inspection_from_solver_shape_requirements() -> None:
+    readme = (_PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
+    workflow = (_PROJECT_ROOT / "docs" / "WORKFLOW.md").read_text(encoding="utf-8")
+
+    assert "inspect` は非正方行列も受け付け" in readme
+    assert "bench`、`tune`、`solve` は正方行列だけ" in readme
+    assert "inspect` では非正方行列を診断できる" in workflow

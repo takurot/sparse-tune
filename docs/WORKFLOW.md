@@ -79,7 +79,7 @@ v0.1.0 で優先する境界は次のとおりです。
 
 - Matrix Market の `mmread` 結果を canonical CSR に変換できる
 - symmetric 行列を二重展開しない
-- 非正方行列や非対応 dtype を拒否する
+- `inspect` では非正方行列を診断できる一方、CG 実行では非正方行列を拒否する
 - 正の対角成分だけでは SPD を証明しない
 - `--assume-spd` が必要な行列を無断で CG に渡さない
 - `info`、有限値、残差の順序に従って `SolveStatus` を分類する
@@ -239,37 +239,8 @@ v0.1.0 のリリース前には、次を確認します。
 - [ ] `LICENSE` が MIT で、README からリンクされている
 - [ ] GitHub の `main` とローカルのリリースコミットが一致している
 
-## 10. 現在のプロジェクト構成
+## 10. 現在の構成を確認する
 
-```text
-.github/workflows/
-├── publish.yml
-├── test.yml
-└── testpypi.yml
-README.md
-RELEASE_NOTES.md
-LICENSE
-pyproject.toml
-docs/
-├── SPEC.md
-├── VALIDATION.md
-└── WORKFLOW.md
-src/sparsetune/
-├── __init__.py
-├── __main__.py
-├── _backends.py
-├── _benchmark.py
-├── _cli.py
-├── _inspect.py
-├── _matrix.py
-├── _probe_worker.py
-├── _profile.py
-├── _runner.py
-├── _solve_worker.py
-├── _types.py
-└── _worker.py
-tests/
-├── fixtures/
-├── integration/
-└── unit/
-```
+ファイル一覧は変化しやすいため、この文書には静的な tree snapshot を置きません。
+レビュー時は `git ls-files` を正として確認します。安定した責務境界は
+「4. 実装サイクル」のモジュール表、テスト区分は「5. テストと品質ゲート」を参照します。
