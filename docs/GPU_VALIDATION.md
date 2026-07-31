@@ -2,11 +2,12 @@
 
 **Cutoff:** 2026-07-31 (Google Colab session)
 
-This report records a single-session functional validation of `sparsetune 0.1.11`
-from the reviewed release-candidate wheel. It confirms that SciPy and CuPy
-produced independently checked converged solutions on one Tesla T4. It is not
-a stable performance baseline: Colab CPU allocation, GPU allocation, clocks,
-and session load vary.
+This report records two single-session functional validations of
+`sparsetune 0.1.11`: one from the reviewed release-candidate wheel and one from
+the production PyPI package. Both confirm that SciPy and CuPy produced
+independently checked converged solutions on a Tesla T4. They are not stable
+performance baselines: Colab CPU allocation, GPU allocation, clocks, and
+session load vary.
 
 ## Artifact provenance
 
@@ -14,11 +15,18 @@ and session load vary.
 | --- | --- |
 | `sparsetune-0.1.11-py3-none-any.whl` | `9ebea9f1e3824e5d57302c3a53cbd2606781b8b819cf9a3319cd1d1765735cfc` |
 | `colab_gpu_validation_results_20260731.json` | `7a111ddc30aee0d7a2b846e0eeb4e10db0546dd2115689baf52a6a836464ace3` |
+| `colab_gpu_validation_results_20260730-3.json` | `de0479e4ca23b2cdd125a601a4c18ea2cf654c04e7444b280b9b24e0aa91d478` |
 
 The JSON records `package_source="release-candidate-wheel"`, the same wheel
 hash, and `sparsetune="0.1.11"`. It remains gitignored under
 `temp/colab_gpu_validation_results_20260731.json` because it is a generated,
 session-specific result artifact.
+
+The post-publication JSON records `package_source="pypi"`,
+`sparsetune="0.1.11"`, and a null `wheel_sha256`, as expected when pip resolves
+the production PyPI package instead of an uploaded local wheel. It remains
+gitignored under `temp/colab_gpu_validation_results_20260730-3.json`. Its
+embedded runtime date is 2026-07-31; the filename is retained as supplied.
 
 The session used Python 3.12.13, SciPy 1.16.3, and CuPy 14.1.1.
 
@@ -65,6 +73,31 @@ small steady-state and both modes in the medium and large cases. These
 recommendations apply only to this matrix construction and session; the
 timings must not be used as cross-device or cross-machine performance claims.
 
+## Production PyPI package confirmation
+
+The post-publication run installed `sparsetune==0.1.11` from PyPI with
+`PACKAGE_SOURCE="pypi"`. Its environment matched the release-candidate run:
+Python 3.12.13, NumPy 2.0.2, SciPy 1.16.3, CuPy 14.1.1 from `cupy-cuda12x`, and
+a Tesla T4 using the CUDA 12.8 toolkit. `sparsetune doctor` and the subprocess
+probe both reported `scipy:cpu` and `cupy:cuda:0`.
+
+All six aggregate results and all 36 measured samples had status `converged`.
+Every independently checked relative residual was at most `rtol=1e-6`; the
+aggregate residuals were unchanged from the reviewed-wheel run.
+
+| Case | Backend | Relative residual | End-to-end | Steady-state |
+| --- | --- | ---: | ---: | ---: |
+| small | SciPy CPU | `6.496e-7` | `0.001746 s` | `0.001254 s` |
+| small | CuPy T4 | `6.496e-7` | `0.010264 s` | `0.007197 s` |
+| medium | SciPy CPU | `5.873e-7` | `0.027960 s` | `0.007700 s` |
+| medium | CuPy T4 | `5.873e-7` | `0.026341 s` | `0.010048 s` |
+| large | SciPy CPU | `6.167e-7` | `0.132563 s` | `0.085368 s` |
+| large | CuPy T4 | `6.167e-7` | `0.056759 s` | `0.007868 s` |
+
+This confirms the production package's CUDA 12 functional path. The different
+recommendations and timings between Colab sessions also reinforce that these
+measurements are session-specific and not performance baselines.
+
 ## Reproduction and evidence limits
 
 The tracked
@@ -75,6 +108,6 @@ prompted. After publication, set `PACKAGE_SOURCE="pypi"` to validate the exact
 production package. The notebook records runtime and package identity,
 validates every result, and writes `colab_gpu_validation_results.json`.
 
-This session did not test physical GPU OOM, multi-GPU execution, a CuPy CUDA 13
-installation, or other GPU models. It therefore makes no claim about those
-paths, CUDA 13 compatibility, or stable cross-device performance.
+Neither session tested physical GPU OOM, multi-GPU execution, a CuPy CUDA 13
+installation, or other GPU models. This report therefore makes no claim about
+those paths, CUDA 13 compatibility, or stable cross-device performance.
