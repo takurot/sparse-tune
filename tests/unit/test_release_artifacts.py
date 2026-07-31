@@ -104,3 +104,36 @@ def test_v011_release_metadata_is_consistent() -> None:
         "#37",
     ):
         assert fragment in release_notes
+
+
+def test_v011_validation_report_records_release_gates() -> None:
+    root = Path(__file__).parents[2]
+    report = (root / "docs" / "VALIDATION.md").read_text(encoding="utf-8")
+
+    assert "# v0.1.11 release-candidate validation report" in report
+    assert "**Version:** `0.1.11`" in report
+    assert "**Release commit:** `356062dac4035c79ac7d74a678111d034e19f22e`" in report
+    assert "**Overall result:** passed" in report
+    assert "7a111ddc30aee0d7a2b846e0eeb4e10db0546dd2115689baf52a6a836464ace3" in report
+
+    for fragment in (
+        "Python 3.10",
+        "Python 3.11",
+        "Python 3.12",
+        "Python 3.13",
+        "Python 3.14",
+        "NumPy 1.24.0 / SciPy 1.10.0",
+        "built wheel",
+        "sparsetune doctor",
+        "sparsetune inspect",
+        "sparsetune bench",
+        "sparsetune tune",
+        "sparsetune solve",
+        "malformed worker output",
+        "unsupported",
+        "profile mismatch",
+        "pip-audit",
+        "Tesla T4",
+        "not a stable performance baseline",
+    ):
+        assert fragment in report

@@ -39,11 +39,11 @@ CPU release-candidate results, public matrix sources, checksums, failure-path
 checks, and reproduction commands are in
 [docs/VALIDATION.md](docs/VALIDATION.md).
 
-A Google Colab run confirmed SciPy and CuPy convergence with independently
-checked relative residuals on a Tesla T4. Its environment, parameters,
-per-matrix outcomes, recommendations, reproduction path, and evidence limits
-are recorded in
-[docs/GPU_VALIDATION.md](docs/GPU_VALIDATION.md) (#37).
+A Google Colab run of the reviewed v0.1.11 wheel confirmed SciPy and CuPy
+convergence with independently checked relative residuals on a Tesla T4. Its
+artifact hashes, environment, parameters, per-matrix outcomes,
+recommendations, reproduction path, and evidence limits are recorded in
+[docs/GPU_VALIDATION.md](docs/GPU_VALIDATION.md) (#37, #39).
 
 ## Known limitations
 
