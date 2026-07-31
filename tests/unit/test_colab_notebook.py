@@ -127,6 +127,9 @@ def test_tracked_gpu_validation_summary_records_scope_and_reproduction() -> None
         "colab_gpu_validation_results.json",
         "9ebea9f1e3824e5d57302c3a53cbd2606781b8b819cf9a3319cd1d1765735cfc",
         "7a111ddc30aee0d7a2b846e0eeb4e10db0546dd2115689baf52a6a836464ace3",
+        "de0479e4ca23b2cdd125a601a4c18ea2cf654c04e7444b280b9b24e0aa91d478",
+        'package_source="pypi"',
+        "production PyPI package",
     ):
         assert fragment in summary
 

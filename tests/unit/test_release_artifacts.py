@@ -160,6 +160,9 @@ def test_v011_publication_evidence_is_complete() -> None:
         "pip check",
         "Apple M1",
         "Tesla T4",
+        "de0479e4ca23b2cdd125a601a4c18ea2cf654c04e7444b280b9b24e0aa91d478",
+        "post-publication production-index GPU smoke",
+        'package_source="pypi"',
     ):
         assert fragment in evidence
 

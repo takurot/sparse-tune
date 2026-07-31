@@ -67,11 +67,21 @@ remains read-only. The successful uploads confirm that the external TestPyPI
 and PyPI trusted publishers accept this repository, workflow, and environment
 combination.
 
-## GPU limitation
+## Production GPU smoke
 
-The publication host was an Apple M1 without NVIDIA CUDA, so the exact
-production wheel was not reinstalled in a GPU environment. The reviewed
-v0.1.11 release-candidate wheel had already passed SciPy and CuPy convergence
-on a Tesla T4 with CUDA 12.8 compatibility and CuPy 14.1.1; that evidence and
-its artifact hash are recorded in [GPU_VALIDATION.md](GPU_VALIDATION.md).
-CUDA 13 and a post-publication production-index GPU reinstall were not tested.
+A post-publication production-index GPU smoke installed
+`sparsetune==0.1.11` from PyPI in Google Colab by using
+`package_source="pypi"`. The exported result JSON has SHA-256
+`de0479e4ca23b2cdd125a601a4c18ea2cf654c04e7444b280b9b24e0aa91d478`
+and records Python 3.12.13, NumPy 2.0.2, SciPy 1.16.3, CuPy 14.1.1 from
+`cupy-cuda12x`, and a Tesla T4 with CUDA 12.8 compatibility.
+
+All six SciPy/CuPy aggregate results and all 36 measured samples converged.
+Their independently checked relative residuals were at most `6.497e-7`, below
+`rtol=1e-6`. The full environment, per-matrix results, reproduction path, and
+session-specific timing limitation are recorded in
+[GPU_VALIDATION.md](GPU_VALIDATION.md).
+
+Physical GPU OOM, multi-GPU execution, CUDA 13, and GPU models other than the
+Tesla T4 remain untested. The Colab timings are functional evidence, not a
+stable performance baseline.
