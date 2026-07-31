@@ -80,6 +80,21 @@ def test_colab_notebook_covers_the_gpu_validation_contract() -> None:
     assert "drive.mount" not in all_source
 
 
+def test_colab_notebook_can_validate_a_release_candidate_wheel() -> None:
+    notebook = _load_notebook()
+    all_source = "\n".join(_sources(notebook, "markdown") + _sources(notebook, "code"))
+
+    for fragment in (
+        'PACKAGE_SOURCE = "release-candidate-wheel"',
+        "files.upload()",
+        "wheel_sha256",
+        "sparsetune-0.1.11-py3-none-any.whl",
+        'PACKAGE_SOURCE == "pypi"',
+        '"package_source": PACKAGE_SOURCE',
+    ):
+        assert fragment in all_source
+
+
 def test_readme_links_to_colab_notebook() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
@@ -94,6 +109,8 @@ def test_tracked_gpu_validation_summary_records_scope_and_reproduction() -> None
     validation = (ROOT / "docs" / "VALIDATION.md").read_text(encoding="utf-8")
 
     for fragment in (
+        "sparsetune 0.1.11",
+        "2026-07-31",
         "Tesla T4",
         "Python 3.12.13",
         "SciPy 1.16.3",
@@ -108,10 +125,15 @@ def test_tracked_gpu_validation_summary_records_scope_and_reproduction() -> None
         "cross-device",
         "notebooks/colab_gpu_validation.ipynb",
         "colab_gpu_validation_results.json",
+        "9ebea9f1e3824e5d57302c3a53cbd2606781b8b819cf9a3319cd1d1765735cfc",
+        "7a111ddc30aee0d7a2b846e0eeb4e10db0546dd2115689baf52a6a836464ace3",
     ):
         assert fragment in summary
 
+    assert "sparsetune 0.1.0" not in summary
+
     assert "docs/GPU_VALIDATION.md" in readme
+    assert "2026-07-31" in readme
     assert "GPU_VALIDATION.md" in validation
 
 
