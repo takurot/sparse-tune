@@ -137,3 +137,31 @@ def test_v011_validation_report_records_release_gates() -> None:
         "not a stable performance baseline",
     ):
         assert fragment in report
+
+
+def test_v011_publication_evidence_is_complete() -> None:
+    root = Path(__file__).parents[2]
+    evidence = (root / "docs" / "RELEASE_EVIDENCE.md").read_text(encoding="utf-8")
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    validation = (root / "docs" / "VALIDATION.md").read_text(encoding="utf-8")
+
+    for fragment in (
+        "a73f75b4c49f984f7a2e344a29fc647f288498fe",
+        "https://github.com/takurot/sparse-tune/releases/tag/v0.1.11",
+        "https://github.com/takurot/sparse-tune/actions/runs/30633795456",
+        "https://github.com/takurot/sparse-tune/actions/runs/30633927610",
+        "170eeb839180b666e56da3b40cee8077956a2c2307e863a1a303442582120bd2",
+        "4829164f3c57128969b577e2095d0b4bd284115180c583922d57ac786cc03dd8",
+        "1f0a5fe179d698adfc91e1b28cc626d0739a4fec217b6791693066b73510c72b",
+        "ecb4aed86b98482966a467b83873b9d74366305775d260e5c70149a2fb608988",
+        "OIDC Trusted Publishing",
+        "testpypi",
+        "pypi",
+        "pip check",
+        "Apple M1",
+        "Tesla T4",
+    ):
+        assert fragment in evidence
+
+    assert "docs/RELEASE_EVIDENCE.md" in readme
+    assert "docs/RELEASE_EVIDENCE.md" in validation

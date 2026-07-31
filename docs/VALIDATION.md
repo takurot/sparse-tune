@@ -34,8 +34,9 @@ shasum -a 256 dist/*
 | `sparsetune-0.1.11.tar.gz` | `cfd551a0c13fe8a3f545e8c70031ea6150dff6d59dc048dc2bf0bbd9731234a6` |
 
 These are release-candidate validation artifacts, not published artifacts.
-Issue #40 must build or retrieve its reviewed artifacts from the release
-commit and record the hashes actually published.
+The final TestPyPI and PyPI workflow runs, published hashes, and exact-version
+smoke checks are recorded in
+[docs/RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md).
 
 ## Supported Python and dependency gates
 

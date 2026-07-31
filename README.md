@@ -306,6 +306,7 @@ backend identityとして記録します。取得できないportable fieldは `
 - [機能仕様書 SPEC v2.1](docs/SPEC.md)
 - [開発ワークフロー](docs/WORKFLOW.md)
 - [v0.1.11 リリース候補検証レポート](docs/VALIDATION.md)
+- [v0.1.11 公開証跡](docs/RELEASE_EVIDENCE.md)
 - [Tesla T4 GPU機能検証レポート](docs/GPU_VALIDATION.md)
 - [v0.1.11 リリースノート](RELEASE_NOTES.md)
 - [Google Colab GPU validation notebook](notebooks/colab_gpu_validation.ipynb)
