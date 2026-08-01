@@ -10,9 +10,12 @@ readme = "README.md"
 requires-python = ">=3.10,<3.15"
 license = "MIT"
 license-files = ["LICENSE"]
+# Upper bounds cap at the next untested major release (NumPy 2.x / SciPy 1.x
+# are the versions this solver is validated against) so a breaking major
+# release doesn't silently install and change solver behavior at runtime.
 dependencies = [
-    "numpy>=1.24.0",
-    "scipy>=1.10.0",
+    "numpy>=1.24.0,<3",
+    "scipy>=1.10.0,<2",
 ]
 
 [project.urls]
@@ -23,8 +26,8 @@ Issues = "https://github.com/takurot/sparse-tune/issues"
 sparsetune = "sparsetune._cli:main"
 
 [project.optional-dependencies]
-cuda12 = ["cupy-cuda12x"]
-cuda13 = ["cupy-cuda13x"]
+cuda12 = ["cupy-cuda12x<14"]
+cuda13 = ["cupy-cuda13x<14"]
 test = [
     "coverage>=7.10",
     "pytest>=7.0",
