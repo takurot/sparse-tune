@@ -271,7 +271,6 @@ def test_cupy_backend_keeps_warmup_outside_samples_and_releases_memory(
     assert linalg.calls[1]["atol"] == 1.0e-8
     assert cupy.stream.synchronize_calls >= 2
     assert backend._mempool.free_calls == 1
-    assert backend._pinned_pool.free_calls == 1
     assert cupy.default_memory_pool.free_calls == 0
     assert cupy.default_pinned_pool.free_calls == 0
 
@@ -282,9 +281,14 @@ def test_cupy_backend_release_does_not_purge_unrelated_prepared_system(
     cupy, _linalg = _install_fake_cupy(monkeypatch)
     matrix = diags([1.0, 2.0, 3.0], format="csr")
 
+    # Both instances are constructed before either prepares, so a
+    # persistent (unscoped) allocator override would have the second
+    # instance's constructor steal allocation routing out from under the
+    # first instance's later prepare() call -- the exact regression this
+    # test guards against.
     first = CuPyBackend("cupy:cuda:0")
-    first_prepared = first.prepare(matrix, np.ones(3), dtype="float32")
     second = CuPyBackend("cupy:cuda:0")
+    first_prepared = first.prepare(matrix, np.ones(3), dtype="float32")
     second.prepare(matrix, np.ones(3), dtype="float32")
 
     # Each prepare() call must have routed its allocations to its own
@@ -295,9 +299,7 @@ def test_cupy_backend_release_does_not_purge_unrelated_prepared_system(
     first.release(first_prepared)
 
     assert first._mempool.free_calls == 1
-    assert first._pinned_pool.free_calls == 1
     assert second._mempool.free_calls == 0
-    assert second._pinned_pool.free_calls == 0
     assert cupy.default_memory_pool.free_calls == 0
     assert cupy.default_pinned_pool.free_calls == 0
     # Allocator scoping must not leak: after both prepare() calls return,

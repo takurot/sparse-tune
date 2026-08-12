@@ -201,8 +201,13 @@ class CuPyBackend:
             if device_index >= int(self._cp.cuda.runtime.getDeviceCount()):
                 raise RuntimeError(f"CUDA device {device_index} is unavailable")
             self._cp.cuda.Device(device_index).use()
+            # No private pinned-memory pool: CuPy exposes no scoped
+            # equivalent of using_allocator() for set_pinned_memory_allocator
+            # (it is process-global), and this backend never stages host
+            # buffers through pinned memory -- cp.asarray() on a plain NumPy
+            # array does not use it -- so there is nothing of ours to
+            # isolate or release.
             self._mempool = self._cp.cuda.MemoryPool()
-            self._pinned_pool = self._cp.cuda.PinnedMemoryPool()
         except Exception as error:
             raise UnsupportedBackendError(f"CuPy is unavailable: {error}") from error
 
@@ -311,7 +316,6 @@ class CuPyBackend:
         prepared.matrix = None
         prepared.rhs = None
         self._mempool.free_all_blocks()
-        self._pinned_pool.free_all_blocks()
 
 
 def get_backend(backend_id: str) -> Backend:
