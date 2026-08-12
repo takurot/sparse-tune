@@ -141,6 +141,23 @@ class _FakeStream:
         self.synchronize_calls += 1
 
 
+class _FakeUsingAllocator:
+    """Mirrors cupy.cuda.using_allocator: push/pop the current allocator."""
+
+    def __init__(self, cupy: "_FakeCupy", malloc: object) -> None:
+        self._cupy = cupy
+        self._malloc = malloc
+        self._previous: object | None = None
+
+    def __enter__(self) -> "_FakeUsingAllocator":
+        self._previous = self._cupy.current_allocator
+        self._cupy.current_allocator = self._malloc
+        return self
+
+    def __exit__(self, *_exc_info: object) -> None:
+        self._cupy.current_allocator = self._previous
+
+
 class _FakeCupy:
     float32 = np.float32
     float64 = np.float64
@@ -149,7 +166,9 @@ class _FakeCupy:
         self.stream = _FakeStream()
         self.default_memory_pool = _FakePool()
         self.default_pinned_pool = _FakePool()
+        self.current_allocator: object = self.default_memory_pool.malloc
         self.asarray_calls = 0
+        outer = self
 
         self.cuda = type(
             "Cuda",
@@ -166,13 +185,15 @@ class _FakeCupy:
                 ),
                 "MemoryPool": staticmethod(_FakePool),
                 "PinnedMemoryPool": staticmethod(_FakePool),
-                "set_allocator": staticmethod(lambda _malloc: None),
-                "set_pinned_memory_allocator": staticmethod(lambda _malloc: None),
+                "using_allocator": staticmethod(
+                    lambda malloc: _FakeUsingAllocator(outer, malloc)
+                ),
             },
         )
 
     def asarray(self, value: object, dtype: object | None = None) -> np.ndarray:
         self.asarray_calls += 1
+        self.current_allocator(0)
         return np.asarray(value, dtype=dtype)
 
     @staticmethod
@@ -266,6 +287,11 @@ def test_cupy_backend_release_does_not_purge_unrelated_prepared_system(
     second = CuPyBackend("cupy:cuda:0")
     second.prepare(matrix, np.ones(3), dtype="float32")
 
+    # Each prepare() call must have routed its allocations to its own
+    # instance's pool, not whichever instance was constructed most recently.
+    assert first._mempool.malloc_calls > 0
+    assert second._mempool.malloc_calls > 0
+
     first.release(first_prepared)
 
     assert first._mempool.free_calls == 1
@@ -274,6 +300,9 @@ def test_cupy_backend_release_does_not_purge_unrelated_prepared_system(
     assert second._pinned_pool.free_calls == 0
     assert cupy.default_memory_pool.free_calls == 0
     assert cupy.default_pinned_pool.free_calls == 0
+    # Allocator scoping must not leak: after both prepare() calls return,
+    # the process-global "current" allocator is back to CuPy's own default.
+    assert cupy.current_allocator == cupy.default_memory_pool.malloc
 
 
 def test_cupy_backend_rejects_invalid_rhs_before_gpu_allocation(

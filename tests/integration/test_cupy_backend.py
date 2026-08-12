@@ -46,11 +46,18 @@ def test_cupy_backend_release_does_not_purge_default_pool() -> None:
     default_pinned_pool = cupy.get_default_pinned_memory_pool()
     default_pool.free_all_blocks()
     default_pinned_pool.free_all_blocks()
-    baseline_used = default_pool.used_bytes()
+
+    # Simulate an unrelated CuPy user's cache living in the default pool:
+    # an allocation that is freed (so its blocks become cached, not
+    # in-use) but must survive our backend's release().
+    unrelated = cupy.arange(4096)
+    del unrelated
+    baseline_free_blocks = default_pool.n_free_blocks()
+    assert baseline_free_blocks > 0
 
     matrix = diags([1.0, 2.0, 3.0], format="csr")
     rhs = np.ones(3)
     prepared = backend.prepare(matrix, rhs, dtype="float64")
     backend.release(prepared)
 
-    assert default_pool.used_bytes() == baseline_used
+    assert default_pool.n_free_blocks() == baseline_free_blocks

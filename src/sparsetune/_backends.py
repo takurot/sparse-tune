@@ -203,12 +203,24 @@ class CuPyBackend:
             self._cp.cuda.Device(device_index).use()
             self._mempool = self._cp.cuda.MemoryPool()
             self._pinned_pool = self._cp.cuda.PinnedMemoryPool()
-            self._cp.cuda.set_allocator(self._mempool.malloc)
-            self._cp.cuda.set_pinned_memory_allocator(self._pinned_pool.malloc)
         except Exception as error:
             raise UnsupportedBackendError(f"CuPy is unavailable: {error}") from error
 
         self.id = backend_id
+
+    def _owned_allocator(self) -> Any:
+        """Scope device allocations to this instance's private pool.
+
+        ``cupy.cuda.set_allocator`` is process-global, so a persistent call
+        in ``__init__`` would let a second ``CuPyBackend`` silently steal
+        allocation routing from the first. ``using_allocator`` instead
+        pushes/pops the current allocator only around each call, which stays
+        correct as long as calls from different instances do not interleave
+        (true for this project's single-threaded, one-backend-per-process
+        worker model).
+        """
+
+        return self._cp.cuda.using_allocator(self._mempool.malloc)
 
     def prepare(
         self,
@@ -228,15 +240,16 @@ class CuPyBackend:
             raise ValueError("RHS must be a vector matching the matrix row count")
 
         cp_dtype = self._cp.float32 if dtype == "float32" else self._cp.float64
-        gpu_matrix = self._sparse.csr_matrix(
-            (
-                self._cp.asarray(cpu_matrix.data, dtype=cp_dtype),
-                self._cp.asarray(cpu_matrix.indices),
-                self._cp.asarray(cpu_matrix.indptr),
-            ),
-            shape=cpu_matrix.shape,
-        )
-        gpu_rhs = self._cp.asarray(cpu_rhs, dtype=cp_dtype)
+        with self._owned_allocator():
+            gpu_matrix = self._sparse.csr_matrix(
+                (
+                    self._cp.asarray(cpu_matrix.data, dtype=cp_dtype),
+                    self._cp.asarray(cpu_matrix.indices),
+                    self._cp.asarray(cpu_matrix.indptr),
+                ),
+                shape=cpu_matrix.shape,
+            )
+            gpu_rhs = self._cp.asarray(cpu_rhs, dtype=cp_dtype)
         return PreparedSystem(matrix=gpu_matrix, rhs=gpu_rhs)
 
     def warmup(
@@ -247,7 +260,8 @@ class CuPyBackend:
         atol: float,
         max_iter: int,
     ) -> None:
-        _ = prepared.matrix @ prepared.rhs
+        with self._owned_allocator():
+            _ = prepared.matrix @ prepared.rhs
         self.solve_prepared(
             prepared,
             rtol=rtol,
@@ -270,13 +284,14 @@ class CuPyBackend:
             nonlocal iterations
             iterations += 1
 
-        solution, info = self._linalg.cg(
-            prepared.matrix,
-            prepared.rhs,
-            maxiter=max_iter,
-            callback=count_iteration,
-            **_tolerance_kwargs(self._linalg.cg, rtol=rtol, atol=atol),
-        )
+        with self._owned_allocator():
+            solution, info = self._linalg.cg(
+                prepared.matrix,
+                prepared.rhs,
+                maxiter=max_iter,
+                callback=count_iteration,
+                **_tolerance_kwargs(self._linalg.cg, rtol=rtol, atol=atol),
+            )
         return NativeSolveResult(
             solution=solution,
             info=int(info),
