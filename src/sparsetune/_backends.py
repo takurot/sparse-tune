@@ -201,6 +201,10 @@ class CuPyBackend:
             if device_index >= int(self._cp.cuda.runtime.getDeviceCount()):
                 raise RuntimeError(f"CUDA device {device_index} is unavailable")
             self._cp.cuda.Device(device_index).use()
+            self._mempool = self._cp.cuda.MemoryPool()
+            self._pinned_pool = self._cp.cuda.PinnedMemoryPool()
+            self._cp.cuda.set_allocator(self._mempool.malloc)
+            self._cp.cuda.set_pinned_memory_allocator(self._pinned_pool.malloc)
         except Exception as error:
             raise UnsupportedBackendError(f"CuPy is unavailable: {error}") from error
 
@@ -218,8 +222,12 @@ class CuPyBackend:
         if not issparse(matrix):
             raise TypeError("matrix must be a SciPy sparse matrix")
 
-        cp_dtype = self._cp.float32 if dtype == "float32" else self._cp.float64
         cpu_matrix = csr_matrix(matrix, copy=False)
+        cpu_rhs = np.asarray(rhs)
+        if cpu_rhs.ndim != 1 or cpu_rhs.shape[0] != cpu_matrix.shape[0]:
+            raise ValueError("RHS must be a vector matching the matrix row count")
+
+        cp_dtype = self._cp.float32 if dtype == "float32" else self._cp.float64
         gpu_matrix = self._sparse.csr_matrix(
             (
                 self._cp.asarray(cpu_matrix.data, dtype=cp_dtype),
@@ -228,9 +236,7 @@ class CuPyBackend:
             ),
             shape=cpu_matrix.shape,
         )
-        gpu_rhs = self._cp.asarray(rhs, dtype=cp_dtype)
-        if gpu_rhs.ndim != 1 or gpu_rhs.shape[0] != cpu_matrix.shape[0]:
-            raise ValueError("RHS must be a vector matching the matrix row count")
+        gpu_rhs = self._cp.asarray(cpu_rhs, dtype=cp_dtype)
         return PreparedSystem(matrix=gpu_matrix, rhs=gpu_rhs)
 
     def warmup(
@@ -289,8 +295,8 @@ class CuPyBackend:
     def release(self, prepared: PreparedSystem) -> None:
         prepared.matrix = None
         prepared.rhs = None
-        self._cp.get_default_memory_pool().free_all_blocks()
-        self._cp.get_default_pinned_memory_pool().free_all_blocks()
+        self._mempool.free_all_blocks()
+        self._pinned_pool.free_all_blocks()
 
 
 def get_backend(backend_id: str) -> Backend:

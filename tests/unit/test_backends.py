@@ -124,6 +124,10 @@ def test_scipy_synchronize_and_release_are_safe_no_ops() -> None:
 class _FakePool:
     def __init__(self) -> None:
         self.free_calls = 0
+        self.malloc_calls = 0
+
+    def malloc(self, _size: int) -> None:
+        self.malloc_calls += 1
 
     def free_all_blocks(self) -> None:
         self.free_calls += 1
@@ -143,8 +147,10 @@ class _FakeCupy:
 
     def __init__(self) -> None:
         self.stream = _FakeStream()
-        self.memory_pool = _FakePool()
-        self.pinned_pool = _FakePool()
+        self.default_memory_pool = _FakePool()
+        self.default_pinned_pool = _FakePool()
+        self.asarray_calls = 0
+
         self.cuda = type(
             "Cuda",
             (),
@@ -158,11 +164,15 @@ class _FakeCupy:
                     (),
                     {"getDeviceCount": staticmethod(lambda: 1)},
                 ),
+                "MemoryPool": staticmethod(_FakePool),
+                "PinnedMemoryPool": staticmethod(_FakePool),
+                "set_allocator": staticmethod(lambda _malloc: None),
+                "set_pinned_memory_allocator": staticmethod(lambda _malloc: None),
             },
         )
 
-    @staticmethod
-    def asarray(value: object, dtype: object | None = None) -> np.ndarray:
+    def asarray(self, value: object, dtype: object | None = None) -> np.ndarray:
+        self.asarray_calls += 1
         return np.asarray(value, dtype=dtype)
 
     @staticmethod
@@ -170,10 +180,10 @@ class _FakeCupy:
         return np.asarray(value)
 
     def get_default_memory_pool(self) -> _FakePool:
-        return self.memory_pool
+        return self.default_memory_pool
 
     def get_default_pinned_memory_pool(self) -> _FakePool:
-        return self.pinned_pool
+        return self.default_pinned_pool
 
 
 class _FakeCupySparse:
@@ -239,8 +249,46 @@ def test_cupy_backend_keeps_warmup_outside_samples_and_releases_memory(
     assert linalg.calls[1]["rtol"] == 1.0e-6
     assert linalg.calls[1]["atol"] == 1.0e-8
     assert cupy.stream.synchronize_calls >= 2
-    assert cupy.memory_pool.free_calls == 1
-    assert cupy.pinned_pool.free_calls == 1
+    assert backend._mempool.free_calls == 1
+    assert backend._pinned_pool.free_calls == 1
+    assert cupy.default_memory_pool.free_calls == 0
+    assert cupy.default_pinned_pool.free_calls == 0
+
+
+def test_cupy_backend_release_does_not_purge_unrelated_prepared_system(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cupy, _linalg = _install_fake_cupy(monkeypatch)
+    matrix = diags([1.0, 2.0, 3.0], format="csr")
+
+    first = CuPyBackend("cupy:cuda:0")
+    first_prepared = first.prepare(matrix, np.ones(3), dtype="float32")
+    second = CuPyBackend("cupy:cuda:0")
+    second.prepare(matrix, np.ones(3), dtype="float32")
+
+    first.release(first_prepared)
+
+    assert first._mempool.free_calls == 1
+    assert first._pinned_pool.free_calls == 1
+    assert second._mempool.free_calls == 0
+    assert second._pinned_pool.free_calls == 0
+    assert cupy.default_memory_pool.free_calls == 0
+    assert cupy.default_pinned_pool.free_calls == 0
+
+
+def test_cupy_backend_rejects_invalid_rhs_before_gpu_allocation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cupy, _linalg = _install_fake_cupy(monkeypatch)
+    backend = CuPyBackend("cupy:cuda:0")
+    matrix = diags([1.0, 2.0, 3.0], format="csr")
+
+    with pytest.raises(
+        ValueError, match="RHS must be a vector matching the matrix row count"
+    ):
+        backend.prepare(matrix, np.ones(4), dtype="float32")
+
+    assert cupy.asarray_calls == 0
 
 
 def test_missing_cupy_is_reported_as_unsupported(

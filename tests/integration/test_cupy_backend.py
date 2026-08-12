@@ -32,3 +32,25 @@ def test_cupy_backend_solves_when_cuda_is_available() -> None:
 
     assert native.info == 0
     np.testing.assert_allclose(matrix @ solution, rhs, rtol=1.0e-6)
+
+
+@pytest.mark.gpu
+def test_cupy_backend_release_does_not_purge_default_pool() -> None:
+    cupy = pytest.importorskip("cupy")
+    try:
+        backend = CuPyBackend()
+    except UnsupportedBackendError as error:
+        pytest.skip(str(error))
+
+    default_pool = cupy.get_default_memory_pool()
+    default_pinned_pool = cupy.get_default_pinned_memory_pool()
+    default_pool.free_all_blocks()
+    default_pinned_pool.free_all_blocks()
+    baseline_used = default_pool.used_bytes()
+
+    matrix = diags([1.0, 2.0, 3.0], format="csr")
+    rhs = np.ones(3)
+    prepared = backend.prepare(matrix, rhs, dtype="float64")
+    backend.release(prepared)
+
+    assert default_pool.used_bytes() == baseline_used
