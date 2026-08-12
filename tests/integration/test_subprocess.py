@@ -100,3 +100,4 @@ def test_worker_failures_remain_structured_and_do_not_echo_config(
     assert invalid_config.status is SolveStatus.INTERNAL_ERROR
     assert invalid_config.error is not None
     assert secret not in invalid_config.error
+    assert secret not in invalid_config.to_json()

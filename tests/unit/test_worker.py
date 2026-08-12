@@ -114,6 +114,84 @@ def test_workers_share_the_parent_supported_dtype_set(tmp_path: Path) -> None:
         _SUPPORTED_DTYPES.remove(future_dtype)
 
 
+def test_read_config_rejects_unhashable_measure_items(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "dtype": "float64",
+                "rtol": 1.0e-6,
+                "atol": 0.0,
+                "max_iter": 50,
+                "runs": 1,
+                "measure": [{}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="invalid worker configuration"):
+        _read_benchmark_config(config_path)
+
+
+def test_read_config_rejects_non_string_measure_items(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "dtype": "float64",
+                "rtol": 1.0e-6,
+                "atol": 0.0,
+                "max_iter": 50,
+                "runs": 1,
+                "measure": [1],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="invalid worker configuration"):
+        _read_benchmark_config(config_path)
+
+
+def test_run_worker_rejects_values_that_overflow_the_target_dtype(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(
+        "sparsetune._worker.get_backend",
+        lambda backend_id: (calls.append(backend_id), RecordingBackend())[1],
+    )
+    matrix = diags([6.8e38, 6.8e38], format="csr")
+    matrix_path, canonical = canonicalize_matrix(matrix, "float64", tmp_path)
+    rhs_path, _ = canonicalize_rhs(
+        None,
+        canonical,
+        dtype_str="float64",
+        work_dir=tmp_path,
+    )
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "dtype": "float32",
+                "rtol": 1.0e-6,
+                "atol": 0.0,
+                "max_iter": 50,
+                "runs": 1,
+                "measure": ["end-to-end"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="invalid worker input"):
+        run_worker("scipy:cpu", matrix_path, rhs_path, config_path)
+
+    assert calls == []
+
+
 def test_worker_exception_statuses_are_structured() -> None:
     assert status_for_exception(MemoryError()) is SolveStatus.OOM
     assert status_for_exception(OutOfMemoryError()) is SolveStatus.OOM

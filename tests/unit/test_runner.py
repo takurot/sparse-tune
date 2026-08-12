@@ -209,6 +209,7 @@ def test_crash_diagnostic_is_bounded_and_redacted(
     assert secret not in result.error
     assert "[REDACTED]" in result.error
     assert len(result.error) <= 500
+    assert secret not in result.to_json()
 
 
 def test_non_finite_worker_result_is_a_process_crash(
