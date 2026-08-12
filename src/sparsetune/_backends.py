@@ -201,10 +201,31 @@ class CuPyBackend:
             if device_index >= int(self._cp.cuda.runtime.getDeviceCount()):
                 raise RuntimeError(f"CUDA device {device_index} is unavailable")
             self._cp.cuda.Device(device_index).use()
+            # No private pinned-memory pool: CuPy exposes no scoped
+            # equivalent of using_allocator() for set_pinned_memory_allocator
+            # (it is process-global), and this backend never stages host
+            # buffers through pinned memory -- cp.asarray() on a plain NumPy
+            # array does not use it -- so there is nothing of ours to
+            # isolate or release.
+            self._mempool = self._cp.cuda.MemoryPool()
         except Exception as error:
             raise UnsupportedBackendError(f"CuPy is unavailable: {error}") from error
 
         self.id = backend_id
+
+    def _owned_allocator(self) -> Any:
+        """Scope device allocations to this instance's private pool.
+
+        ``cupy.cuda.set_allocator`` is process-global, so a persistent call
+        in ``__init__`` would let a second ``CuPyBackend`` silently steal
+        allocation routing from the first. ``using_allocator`` instead
+        pushes/pops the current allocator only around each call, which stays
+        correct as long as calls from different instances do not interleave
+        (true for this project's single-threaded, one-backend-per-process
+        worker model).
+        """
+
+        return self._cp.cuda.using_allocator(self._mempool.malloc)
 
     def prepare(
         self,
@@ -218,19 +239,22 @@ class CuPyBackend:
         if not issparse(matrix):
             raise TypeError("matrix must be a SciPy sparse matrix")
 
-        cp_dtype = self._cp.float32 if dtype == "float32" else self._cp.float64
         cpu_matrix = csr_matrix(matrix, copy=False)
-        gpu_matrix = self._sparse.csr_matrix(
-            (
-                self._cp.asarray(cpu_matrix.data, dtype=cp_dtype),
-                self._cp.asarray(cpu_matrix.indices),
-                self._cp.asarray(cpu_matrix.indptr),
-            ),
-            shape=cpu_matrix.shape,
-        )
-        gpu_rhs = self._cp.asarray(rhs, dtype=cp_dtype)
-        if gpu_rhs.ndim != 1 or gpu_rhs.shape[0] != cpu_matrix.shape[0]:
+        cpu_rhs = np.asarray(rhs)
+        if cpu_rhs.ndim != 1 or cpu_rhs.shape[0] != cpu_matrix.shape[0]:
             raise ValueError("RHS must be a vector matching the matrix row count")
+
+        cp_dtype = self._cp.float32 if dtype == "float32" else self._cp.float64
+        with self._owned_allocator():
+            gpu_matrix = self._sparse.csr_matrix(
+                (
+                    self._cp.asarray(cpu_matrix.data, dtype=cp_dtype),
+                    self._cp.asarray(cpu_matrix.indices),
+                    self._cp.asarray(cpu_matrix.indptr),
+                ),
+                shape=cpu_matrix.shape,
+            )
+            gpu_rhs = self._cp.asarray(cpu_rhs, dtype=cp_dtype)
         return PreparedSystem(matrix=gpu_matrix, rhs=gpu_rhs)
 
     def warmup(
@@ -241,7 +265,8 @@ class CuPyBackend:
         atol: float,
         max_iter: int,
     ) -> None:
-        _ = prepared.matrix @ prepared.rhs
+        with self._owned_allocator():
+            _ = prepared.matrix @ prepared.rhs
         self.solve_prepared(
             prepared,
             rtol=rtol,
@@ -264,13 +289,14 @@ class CuPyBackend:
             nonlocal iterations
             iterations += 1
 
-        solution, info = self._linalg.cg(
-            prepared.matrix,
-            prepared.rhs,
-            maxiter=max_iter,
-            callback=count_iteration,
-            **_tolerance_kwargs(self._linalg.cg, rtol=rtol, atol=atol),
-        )
+        with self._owned_allocator():
+            solution, info = self._linalg.cg(
+                prepared.matrix,
+                prepared.rhs,
+                maxiter=max_iter,
+                callback=count_iteration,
+                **_tolerance_kwargs(self._linalg.cg, rtol=rtol, atol=atol),
+            )
         return NativeSolveResult(
             solution=solution,
             info=int(info),
@@ -289,8 +315,7 @@ class CuPyBackend:
     def release(self, prepared: PreparedSystem) -> None:
         prepared.matrix = None
         prepared.rhs = None
-        self._cp.get_default_memory_pool().free_all_blocks()
-        self._cp.get_default_pinned_memory_pool().free_all_blocks()
+        self._mempool.free_all_blocks()
 
 
 def get_backend(backend_id: str) -> Backend:
