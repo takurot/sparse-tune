@@ -9,8 +9,42 @@ from sparsetune._backends import (
     CuPyBackend,
     SciPyBackend,
     UnsupportedBackendError,
+    UnsupportedSolverSignatureError,
     get_backend,
 )
+
+
+def test_tolerance_kwargs_uses_explicit_rtol_when_present() -> None:
+    def solver(matrix: object, rhs: object, *, rtol: float, atol: float) -> None:
+        raise NotImplementedError
+
+    assert backends._tolerance_kwargs(solver, rtol=1.0e-6, atol=1.0e-9) == {
+        "rtol": 1.0e-6,
+        "atol": 1.0e-9,
+    }
+
+
+def test_tolerance_kwargs_uses_legacy_tol_when_no_rtol_present() -> None:
+    def solver(matrix: object, rhs: object, *, tol: float, atol: float) -> None:
+        raise NotImplementedError
+
+    assert backends._tolerance_kwargs(solver, rtol=1.0e-6, atol=1.0e-9) == {
+        "tol": 1.0e-6,
+        "atol": 1.0e-9,
+    }
+
+
+def test_tolerance_kwargs_rejects_kwargs_only_signature() -> None:
+    def solver(matrix: object, rhs: object, **kwargs: object) -> None:
+        raise NotImplementedError
+
+    with pytest.raises(UnsupportedSolverSignatureError):
+        backends._tolerance_kwargs(solver, rtol=1.0e-6, atol=1.0e-9)
+
+
+def test_tolerance_kwargs_rejects_uninspectable_callable() -> None:
+    with pytest.raises(UnsupportedSolverSignatureError):
+        backends._tolerance_kwargs(dict.update, rtol=1.0e-6, atol=1.0e-9)
 
 
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])
@@ -215,10 +249,28 @@ class _FakeCupyLinalg:
     def __init__(self) -> None:
         self.calls: list[dict[str, object]] = []
 
-    def cg(self, matrix: object, rhs: object, **kwargs: object) -> object:
+    def cg(
+        self,
+        matrix: object,
+        rhs: object,
+        *,
+        x0: object = None,
+        rtol: float = 1.0e-5,
+        atol: float = 0.0,
+        maxiter: int | None = None,
+        M: object = None,
+        callback: object = None,
+    ) -> object:
+        kwargs = {
+            "x0": x0,
+            "rtol": rtol,
+            "atol": atol,
+            "maxiter": maxiter,
+            "M": M,
+            "callback": callback,
+        }
         self.calls.append(kwargs.copy())
         solution = np.linalg.solve(matrix.toarray(), rhs)
-        callback = kwargs.get("callback")
         if callable(callback):
             callback(solution)
         return solution, 0

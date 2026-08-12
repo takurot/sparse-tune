@@ -16,23 +16,43 @@ from scipy.sparse.linalg import cg  # type: ignore[import-untyped]
 _SUPPORTED_DTYPES = {"float32", "float64"}
 
 
+class UnsupportedSolverSignatureError(RuntimeError):
+    """Raised when a solver signature gives no evidence it honors tolerances."""
+
+
 def _tolerance_kwargs(
     solver: Any,
     *,
     rtol: float,
     atol: float,
 ) -> dict[str, float]:
-    """Map the public tolerance contract to old and current CG signatures."""
+    """Map the public tolerance contract to old and current CG signatures.
+
+    Only solvers that explicitly declare an ``rtol`` (current SciPy/CuPy CG)
+    or ``tol`` (legacy SciPy CG) parameter are supported. The presence of a
+    ``**kwargs`` catch-all is not evidence that a solver honors ``rtol``/
+    ``atol``, so it is never accepted as a substitute for an explicit
+    parameter.
+    """
 
     try:
-        parameters = inspect.signature(solver).parameters.values()
-    except (TypeError, ValueError):
+        parameter_names = {
+            parameter.name
+            for parameter in inspect.signature(solver).parameters.values()
+        }
+    except (TypeError, ValueError) as exc:
+        raise UnsupportedSolverSignatureError(
+            f"Cannot introspect the signature of solver {solver!r}: {exc}"
+        ) from exc
+    if "rtol" in parameter_names:
         return {"rtol": rtol, "atol": atol}
-    if any(parameter.name == "rtol" for parameter in parameters) or any(
-        parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters
-    ):
-        return {"rtol": rtol, "atol": atol}
-    return {"tol": rtol, "atol": atol}
+    if "tol" in parameter_names:
+        return {"tol": rtol, "atol": atol}
+    raise UnsupportedSolverSignatureError(
+        f"Solver {solver!r} does not explicitly expose an 'rtol' or 'tol' "
+        "parameter; refusing to assume it honors the requested tolerance "
+        "contract."
+    )
 
 
 class UnsupportedBackendError(RuntimeError):
