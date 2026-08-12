@@ -87,8 +87,8 @@ def _read_config(path: Path) -> dict[str, Any]:
     if (
         not isinstance(measure, list)
         or not measure
-        or not set(measure).issubset({"end-to-end", "steady-state"})
         or any(not isinstance(item, str) for item in measure)
+        or not set(measure).issubset({"end-to-end", "steady-state"})
     ):
         raise ValueError("invalid worker configuration")
     return payload
@@ -299,6 +299,8 @@ def run_worker(
         raise ValueError("invalid worker input")
     matrix = matrix.astype(dtype, copy=False)
     rhs = np.asarray(rhs, dtype=dtype)
+    if not np.all(np.isfinite(matrix.data)) or not np.all(np.isfinite(rhs)):
+        raise ValueError("invalid worker input")
     backend = get_backend(backend_id)
 
     samples = []
