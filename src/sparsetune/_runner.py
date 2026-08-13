@@ -33,6 +33,9 @@ _SECRET_ASSIGNMENT = re.compile(
     r"\s*[:=]\s*(?:\"[^\"]*\"|'[^']*'|\S+)"
 )
 _BEARER_TOKEN = re.compile(r"(?i)\bbearer\s+\S+")
+_SENSITIVE_CONFIG_KEY = re.compile(
+    r"(?i)(api[_-]?key|token|secret|password|authorization)"
+)
 _SUPPORTED_DTYPES = {"float32", "float64"}
 
 
@@ -117,6 +120,15 @@ def _sanitize_diagnostic(diagnostic: str) -> str:
     )
     sanitized = _BEARER_TOKEN.sub("Bearer [REDACTED]", sanitized)
     return sanitized[:_DIAGNOSTIC_LIMIT]
+
+
+def _redact_sensitive_config(config: dict[str, Any]) -> dict[str, Any]:
+    """Strip credential-shaped values before the worker config touches disk."""
+
+    return {
+        key: "[REDACTED]" if _SENSITIVE_CONFIG_KEY.search(key) else value
+        for key, value in config.items()
+    }
 
 
 def _error_result(
@@ -383,7 +395,10 @@ def run_backend_in_subprocess(
         config_path = temporary_path / "config.json"
         result_path = temporary_path / "result.json"
         try:
-            config_path.write_text(json.dumps(config), encoding="utf-8")
+            config_path.write_text(
+                json.dumps(_redact_sensitive_config(config)),
+                encoding="utf-8",
+            )
         except (OSError, TypeError, ValueError):
             return _error_result(
                 backend_id,
@@ -462,7 +477,10 @@ def run_solve_in_subprocess(
         result_path = temporary_path / "result.json"
         solution_path = temporary_path / "solution.npy"
         try:
-            config_path.write_text(json.dumps(config), encoding="utf-8")
+            config_path.write_text(
+                json.dumps(_redact_sensitive_config(config)),
+                encoding="utf-8",
+            )
         except (OSError, TypeError, ValueError):
             return (
                 _error_result(

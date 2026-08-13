@@ -37,6 +37,7 @@ test = [
 where = ["src"]
 
 [tool.pytest.ini_options]
+pythonpath = ["."]
 testpaths = ["tests"]
 markers = [
     "gpu: requires a compatible CUDA GPU",
