@@ -180,6 +180,36 @@ def test_timeout_becomes_structured_status(
     assert result.error == "Timed out after 0.01 seconds"
 
 
+def test_worker_config_file_never_holds_credential_values_in_clear_text(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    credential_marker = "sentinel-config-secret"
+    seen_config_text: list[str] = []
+
+    def capture(
+        command: list[str],
+        **_kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        config_path = Path(command[command.index("--config") + 1])
+        seen_config_text.append(config_path.read_text(encoding="utf-8"))
+        raise subprocess.TimeoutExpired(command, 0.01)
+
+    monkeypatch.setattr(subprocess, "run", capture)
+
+    run_backend_in_subprocess(
+        "scipy:cpu",
+        tmp_path / "matrix.npz",
+        tmp_path / "rhs.npy",
+        {"dtype": "float64", "API_TOKEN": credential_marker},
+        timeout=0.01,
+    )
+
+    assert seen_config_text
+    assert credential_marker not in seen_config_text[0]
+    assert "[REDACTED]" in seen_config_text[0]
+
+
 def test_crash_diagnostic_is_bounded_and_redacted(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
