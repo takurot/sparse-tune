@@ -33,7 +33,9 @@ _SECRET_ASSIGNMENT = re.compile(
     r"\s*[:=]\s*(?:\"[^\"]*\"|'[^']*'|\S+)"
 )
 _BEARER_TOKEN = re.compile(r"(?i)\bbearer\s+\S+")
-_SENSITIVE_CONFIG_KEY = re.compile(r"(?i)(api[_-]?key|token|secret|password|authorization)")
+_SENSITIVE_CONFIG_KEY = re.compile(
+    r"(?i)(api[_-]?key|token|secret|password|authorization)"
+)
 _SUPPORTED_DTYPES = {"float32", "float64"}
 
 
