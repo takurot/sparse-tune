@@ -27,7 +27,7 @@ sparsetune = "sparsetune._cli:main"
 
 [project.optional-dependencies]
 cuda12 = ["cupy-cuda12x<15"]
-cuda13 = ["cupy-cuda13x<14"]
+cuda13 = ["cupy-cuda13x<15"]
 test = [
     "coverage>=7.10",
     "pytest>=7.0",
