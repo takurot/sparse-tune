@@ -269,6 +269,55 @@ def test_solve_prints_bounded_metrics_and_writes_solution(
     assert output.is_file()
 
 
+def test_solve_failure_prints_metrics_and_returns_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    result = SolveResult(
+        x=None,
+        backend="scipy:cpu",
+        dtype="float64",
+        status=SolveStatus.TIMEOUT,
+        iterations=0,
+        residual_norm=0.0,
+        relative_residual=None,
+        convergence_threshold=0.0,
+        setup_seconds=0.0,
+        solve_seconds=0.0,
+        total_seconds=0.0,
+        error="Timed out after 1e-12 seconds",
+    )
+    output = tmp_path / "failed-solution.mtx"
+
+    def fake_solve(*_args: object, **kwargs: object) -> SolveResult:
+        assert kwargs["output"] == output
+        return result
+
+    monkeypatch.setattr("sparsetune._cli.solve", fake_solve)
+
+    assert (
+        main(
+            [
+                "solve",
+                "matrix.mtx",
+                "--backend",
+                "scipy:cpu",
+                "--timeout",
+                "1e-12",
+                "--output",
+                str(output),
+            ]
+        )
+        == 3
+    )
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["status"] == "timeout"
+    assert payload["error"] == "Timed out after 1e-12 seconds"
+    assert not output.exists()
+
+
 def test_solve_quiet_suppresses_metrics_output(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

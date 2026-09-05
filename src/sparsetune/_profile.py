@@ -351,8 +351,6 @@ def solve(
         )
 
     solve_result = _as_solve_result(result, solution)
-    if output is not None:
-        if solve_result.x is None:
-            raise ValueError("cannot write a solution for an unsuccessful solve")
+    if output is not None and solve_result.x is not None:
         mmwrite(Path(output), solve_result.x.reshape(-1, 1))
     return solve_result

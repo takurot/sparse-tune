@@ -511,6 +511,19 @@ def test_explicit_scipy_solve_writes_matrix_market_solution(tmp_path: Path) -> N
     np.testing.assert_allclose(np.asarray(mmread(output)).reshape(-1), [1.0, 1.0])
 
 
+def test_explicit_scipy_solve_skips_output_for_unsuccessful_solve(
+    tmp_path: Path,
+) -> None:
+    matrix = csr_matrix([[4.0, 1.0], [1.0, 3.0]])
+    output = tmp_path / "failed-solution.mtx"
+
+    result = solve(matrix, backend="scipy:cpu", timeout=1.0e-12, output=output)
+
+    assert result.status is SolveStatus.TIMEOUT
+    assert result.x is None
+    assert not output.exists()
+
+
 def test_explicit_scipy_solve_accepts_zero_rhs() -> None:
     matrix = csr_matrix([[4.0, 1.0], [1.0, 3.0]])
 
