@@ -14,16 +14,16 @@ def _metadata(version: str) -> bytes:
     return (f"Metadata-Version: 2.4\nName: sparsetune\nVersion: {version}\n\n").encode()
 
 
-def _wheel(path: Path, version: str) -> None:
+def _wheel(path: Path, version: str, metadata_version: str | None = None) -> None:
     with zipfile.ZipFile(path, "w") as archive:
         archive.writestr(
             f"sparsetune-{version}.dist-info/METADATA",
-            _metadata(version),
+            _metadata(metadata_version if metadata_version is not None else version),
         )
 
 
-def _sdist(path: Path, version: str) -> None:
-    payload = _metadata(version)
+def _sdist(path: Path, version: str, metadata_version: str | None = None) -> None:
+    payload = _metadata(metadata_version if metadata_version is not None else version)
     info = tarfile.TarInfo(f"sparsetune-{version}/PKG-INFO")
     info.size = len(payload)
     nested = tarfile.TarInfo(f"sparsetune-{version}/src/sparsetune.egg-info/PKG-INFO")
@@ -58,6 +58,107 @@ def test_artifact_version_requires_one_wheel_and_one_sdist(tmp_path: Path) -> No
 
     with pytest.raises(ValueError, match="exactly one wheel and one sdist"):
         artifact_version([wheel])
+
+
+def test_artifact_version_rejects_corrupt_wheel(tmp_path: Path) -> None:
+    wheel = tmp_path / "sparsetune-0.1.11-py3-none-any.whl"
+    sdist = tmp_path / "sparsetune-0.1.11.tar.gz"
+    wheel.write_bytes(b"corrupt non-zip data")
+    _sdist(sdist, "0.1.11")
+
+    with pytest.raises(
+        ValueError, match="corrupt or unreadable wheel archive"
+    ) as exc_info:
+        artifact_version([wheel, sdist])
+    assert wheel.name in str(exc_info.value)
+    assert isinstance(exc_info.value.__cause__, (zipfile.BadZipFile, OSError, EOFError))
+
+
+def test_artifact_version_rejects_corrupt_sdist(tmp_path: Path) -> None:
+    wheel = tmp_path / "sparsetune-0.1.11-py3-none-any.whl"
+    sdist = tmp_path / "sparsetune-0.1.11.tar.gz"
+    _wheel(wheel, "0.1.11")
+    sdist.write_bytes(b"corrupt non-tar data")
+
+    with pytest.raises(
+        ValueError, match="corrupt or unreadable sdist archive"
+    ) as exc_info:
+        artifact_version([wheel, sdist])
+    assert sdist.name in str(exc_info.value)
+    assert isinstance(exc_info.value.__cause__, (tarfile.TarError, OSError, EOFError))
+
+
+def test_artifact_version_accepts_dot_slash_sdist_layout(tmp_path: Path) -> None:
+    wheel = tmp_path / "sparsetune-0.1.11-py3-none-any.whl"
+    sdist = tmp_path / "sparsetune-0.1.11.tar.gz"
+    _wheel(wheel, "0.1.11")
+
+    payload = _metadata("0.1.11")
+    info = tarfile.TarInfo("./sparsetune-0.1.11/PKG-INFO")
+    info.size = len(payload)
+    nested = tarfile.TarInfo("./sparsetune-0.1.11/src/sparsetune.egg-info/PKG-INFO")
+    nested.size = len(payload)
+    with tarfile.open(sdist, "w:gz") as archive:
+        archive.addfile(info, BytesIO(payload))
+        archive.addfile(nested, BytesIO(payload))
+
+    assert artifact_version([wheel, sdist]) == "0.1.11"
+
+
+def test_artifact_version_rejects_ambiguous_sdist_pkg_info(tmp_path: Path) -> None:
+    wheel = tmp_path / "sparsetune-0.1.11-py3-none-any.whl"
+    sdist = tmp_path / "sparsetune-0.1.11.tar.gz"
+    _wheel(wheel, "0.1.11")
+
+    payload = _metadata("0.1.11")
+    info1 = tarfile.TarInfo("sparsetune-0.1.11/PKG-INFO")
+    info1.size = len(payload)
+    info2 = tarfile.TarInfo("other-0.1.11/PKG-INFO")
+    info2.size = len(payload)
+    with tarfile.open(sdist, "w:gz") as archive:
+        archive.addfile(info1, BytesIO(payload))
+        archive.addfile(info2, BytesIO(payload))
+
+    with pytest.raises(ValueError, match="expected exactly one sdist PKG-INFO file"):
+        artifact_version([wheel, sdist])
+
+
+def test_artifact_version_rejects_nested_only_sdist_pkg_info(tmp_path: Path) -> None:
+    wheel = tmp_path / "sparsetune-0.1.11-py3-none-any.whl"
+    sdist = tmp_path / "sparsetune-0.1.11.tar.gz"
+    _wheel(wheel, "0.1.11")
+
+    payload = _metadata("0.1.11")
+    nested = tarfile.TarInfo("sparsetune-0.1.11/src/sparsetune.egg-info/PKG-INFO")
+    nested.size = len(payload)
+    with tarfile.open(sdist, "w:gz") as archive:
+        archive.addfile(nested, BytesIO(payload))
+
+    with pytest.raises(ValueError, match="expected exactly one sdist PKG-INFO file"):
+        artifact_version([wheel, sdist])
+
+
+@pytest.mark.parametrize(
+    "unsafe_version",
+    [
+        "0.1.11\x00",
+        "0.1.11\x1b[31m",
+        "0.1.11\rbar",
+        "0.1.11\n\tbar",
+        "0.1.11; rm -rf /",
+        "0.1.11 injection",
+    ],
+)
+def test_artifact_version_rejects_unsafe_and_control_character_versions(
+    tmp_path: Path, unsafe_version: str
+) -> None:
+    wheel = tmp_path / "sparsetune-0.1.11-py3-none-any.whl"
+    sdist = tmp_path / "sparsetune-0.1.11.tar.gz"
+    _wheel(wheel, "0.1.11", metadata_version=unsafe_version)
+    _sdist(sdist, "0.1.11", metadata_version=unsafe_version)
+
+    with pytest.raises(ValueError, match="artifact version is missing or invalid"):
+        artifact_version([wheel, sdist])
 
 
 def test_python_policy_and_workflows_stay_aligned() -> None:
