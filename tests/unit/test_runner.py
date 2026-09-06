@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 import subprocess
 
@@ -508,6 +509,201 @@ def test_solution_presence_must_match_worker_status(
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 
     monkeypatch.setattr(subprocess, "run", complete)
+    result, solution = run_solve_in_subprocess(
+        "scipy:cpu",
+        tmp_path / "matrix.npz",
+        tmp_path / "rhs.npy",
+        {
+            "dtype": "float64",
+            "rtol": 1.0e-6,
+            "atol": 0.0,
+            "max_iter": 50,
+        },
+        timeout=1.0,
+        expected_size=2,
+    )
+
+    assert result.status is SolveStatus.PROCESS_CRASH
+    assert result.error == "Worker returned a malformed solve result"
+    assert solution is None
+
+
+def test_runner_accepts_nan_inf_worker_result(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    def worker_nan_inf(
+        command: list[str],
+        **_kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        result_path = Path(command[command.index("--result") + 1])
+        sample = RunSample(
+            measure="end-to-end",
+            transfer_seconds=0.1,
+            setup_seconds=0.2,
+            solve_seconds=0.3,
+            total_seconds=0.6,
+            iterations=2,
+            residual_norm=float("nan"),
+            relative_residual=float("nan"),
+            convergence_threshold=1.0e-6,
+            status=SolveStatus.NAN_INF,
+        )
+        payload = SolverResult(
+            backend="scipy:cpu",
+            solver_impl="scipy.sparse.linalg.cg",
+            dtype="float64",
+            transfer_seconds=0.1,
+            setup_seconds=0.2,
+            solve_seconds=0.3,
+            total_seconds=0.6,
+            iterations=2,
+            residual_norm=float("nan"),
+            relative_residual=float("nan"),
+            convergence_threshold=1.0e-6,
+            pool_used_gb=None,
+            status=SolveStatus.NAN_INF,
+            error=None,
+            samples=[sample],
+        )
+        result_path.write_text(payload.to_json(), encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", worker_nan_inf)
+
+    result = run_backend_in_subprocess(
+        "scipy:cpu",
+        tmp_path / "matrix.npz",
+        tmp_path / "rhs.npy",
+        {"dtype": "float64"},
+        timeout=1.0,
+    )
+
+    assert result.status is SolveStatus.NAN_INF
+    assert result.error is None
+    assert math.isnan(result.residual_norm)
+    assert result.relative_residual is not None and math.isnan(result.relative_residual)
+
+
+def test_run_solve_in_subprocess_propagates_nan_inf_solution(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    def worker_nan_inf(
+        command: list[str],
+        **_kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        result_path = Path(command[command.index("--result") + 1])
+        solution_path = Path(command[command.index("--solution") + 1])
+        sample = RunSample(
+            measure="end-to-end",
+            transfer_seconds=0.1,
+            setup_seconds=0.2,
+            solve_seconds=0.3,
+            total_seconds=0.6,
+            iterations=2,
+            residual_norm=float("nan"),
+            relative_residual=float("nan"),
+            convergence_threshold=1.0e-6,
+            status=SolveStatus.NAN_INF,
+        )
+        payload = SolverResult(
+            backend="scipy:cpu",
+            solver_impl="scipy.sparse.linalg.cg",
+            dtype="float64",
+            transfer_seconds=0.1,
+            setup_seconds=0.2,
+            solve_seconds=0.3,
+            total_seconds=0.6,
+            iterations=2,
+            residual_norm=float("nan"),
+            relative_residual=float("nan"),
+            convergence_threshold=1.0e-6,
+            pool_used_gb=None,
+            status=SolveStatus.NAN_INF,
+            error=None,
+            samples=[sample],
+        )
+        result_path.write_text(payload.to_json(), encoding="utf-8")
+        np.save(solution_path, np.asarray([np.nan, np.nan]), allow_pickle=False)
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", worker_nan_inf)
+
+    result, solution = run_solve_in_subprocess(
+        "scipy:cpu",
+        tmp_path / "matrix.npz",
+        tmp_path / "rhs.npy",
+        {
+            "dtype": "float64",
+            "rtol": 1.0e-6,
+            "atol": 0.0,
+            "max_iter": 50,
+        },
+        timeout=1.0,
+        expected_size=2,
+    )
+
+    assert result.status is SolveStatus.NAN_INF
+    assert result.error is None
+    assert solution is not None
+    assert np.isnan(solution).all()
+
+
+@pytest.mark.parametrize(
+    ("status", "solution_values"),
+    [
+        (SolveStatus.NAN_INF, [1.0, 1.0]),
+        (SolveStatus.CONVERGED, [np.nan, 1.0]),
+    ],
+)
+def test_solution_finiteness_must_match_worker_status(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    status: SolveStatus,
+    solution_values: list[float],
+) -> None:
+    def worker(
+        command: list[str],
+        **_kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        result_path = Path(command[command.index("--result") + 1])
+        solution_path = Path(command[command.index("--solution") + 1])
+        sample = RunSample(
+            measure="end-to-end",
+            transfer_seconds=0.1,
+            setup_seconds=0.2,
+            solve_seconds=0.3,
+            total_seconds=0.6,
+            iterations=2,
+            residual_norm=float("nan") if status is SolveStatus.NAN_INF else 0.0,
+            relative_residual=float("nan") if status is SolveStatus.NAN_INF else 0.0,
+            convergence_threshold=1.0e-6,
+            status=status,
+        )
+        payload = SolverResult(
+            backend="scipy:cpu",
+            solver_impl="scipy.sparse.linalg.cg",
+            dtype="float64",
+            transfer_seconds=0.1,
+            setup_seconds=0.2,
+            solve_seconds=0.3,
+            total_seconds=0.6,
+            iterations=2,
+            residual_norm=float("nan") if status is SolveStatus.NAN_INF else 0.0,
+            relative_residual=float("nan") if status is SolveStatus.NAN_INF else 0.0,
+            convergence_threshold=1.0e-6,
+            pool_used_gb=None,
+            status=status,
+            error=None,
+            samples=[sample],
+        )
+        result_path.write_text(payload.to_json(), encoding="utf-8")
+        np.save(solution_path, np.asarray(solution_values), allow_pickle=False)
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", worker)
+
     result, solution = run_solve_in_subprocess(
         "scipy:cpu",
         tmp_path / "matrix.npz",
