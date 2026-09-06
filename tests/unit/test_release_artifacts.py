@@ -269,3 +269,38 @@ def test_v011_publication_evidence_is_complete() -> None:
 
     assert "docs/RELEASE_EVIDENCE.md" in readme
     assert "docs/RELEASE_EVIDENCE.md" in validation
+
+
+def test_cuda_extras_match_documented_gpu_validation_cupy_version() -> None:
+    import re
+    from packaging.requirements import Requirement
+    from packaging.version import Version
+
+    root = Path(__file__).parents[2]
+    pyproject_text = (root / "pyproject.toml").read_text(encoding="utf-8")
+
+    cuda12_match = re.search(r'cuda12\s*=\s*\["([^"]+)"\]', pyproject_text)
+    cuda13_match = re.search(r'cuda13\s*=\s*\["([^"]+)"\]', pyproject_text)
+    assert cuda12_match is not None
+    assert cuda13_match is not None
+
+    req12 = Requirement(cuda12_match.group(1))
+    req13 = Requirement(cuda13_match.group(1))
+
+    assert req12.name == "cupy-cuda12x"
+    assert req13.name == "cupy-cuda13x"
+
+    # Evidence-backed version from docs/GPU_VALIDATION.md is 14.1.1
+    gpu_val = (root / "docs" / "GPU_VALIDATION.md").read_text(encoding="utf-8")
+    assert "CuPy 14.1.1" in gpu_val
+    validated_cupy = Version("14.1.1")
+
+    # Documented/validated CuPy 14.x must satisfy both extras
+    assert validated_cupy in req12.specifier
+    assert validated_cupy in req13.specifier
+
+    # Untested major versions (<14 or >=15) must be excluded
+    assert Version("13.3.0") not in req12.specifier
+    assert Version("13.3.0") not in req13.specifier
+    assert Version("15.0.0") not in req12.specifier
+    assert Version("15.0.0") not in req13.specifier

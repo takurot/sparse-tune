@@ -1074,9 +1074,9 @@ numpy>=1.24.0
 **依存関係（オプション）:**
 
 ```bash
-# 利用者の CUDA バージョンに合わせて選択
-pip install sparsetune[cuda12]   # CUDA 12.x
-pip install sparsetune[cuda13]   # CUDA 13.x
+# 利用者の CUDA バージョンに合わせて選択（CuPy 14.x に対応）
+pip install "sparsetune[cuda12]"   # CUDA 12.x (cupy-cuda12x>=14.0.0,<15)
+pip install "sparsetune[cuda13]"   # CUDA 13.x (cupy-cuda13x>=14.0.0,<15)
 ```
 
 または手動で:

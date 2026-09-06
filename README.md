@@ -62,8 +62,8 @@ pip install "sparsetune[cuda13]==0.1.11"
 
 Python 3.10〜3.14をサポートし、CIで各versionを継続検証します。
 必須依存関係は NumPy 1.24 以上 3 未満、SciPy 1.10 以上 2 未満です。SciPy 1.10/1.11 の
-`tol` と新しいSciPyの `rtol` の両CG呼び出し規約に対応します。CuPy は任意依存で、
-`import sparsetune` の時点では GPU 検出などの副作用を発生させません。
+`tol` と新しいSciPyの `rtol` の両CG呼び出し規約に対応します。CuPy は任意依存（`cuda12` / `cuda13`
+extras で CuPy 14.x に対応）で、`import sparsetune` の時点では GPU 検出などの副作用を発生させません。
 
 ### Google Colab でGPU検証
 

@@ -26,10 +26,14 @@ Issues = "https://github.com/takurot/sparse-tune/issues"
 sparsetune = "sparsetune._cli:main"
 
 [project.optional-dependencies]
-cuda12 = ["cupy-cuda12x<15"]
-cuda13 = ["cupy-cuda13x<15"]
+# CuPy 14.x is the version line validated by the project on real GPU hardware
+# (CuPy 14.1.1 on Tesla T4; see docs/GPU_VALIDATION.md). Capped at <15 to avoid
+# unvalidated major releases.
+cuda12 = ["cupy-cuda12x>=14.0.0,<15"]
+cuda13 = ["cupy-cuda13x>=14.0.0,<15"]
 test = [
     "coverage>=7.10",
+    "packaging>=23.0",
     "pytest>=7.0",
 ]
 
