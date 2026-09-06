@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 import importlib
 import warnings
@@ -555,3 +556,42 @@ def test_real_tune_save_load_solve_round_trip(tmp_path: Path) -> None:
     assert result.backend == "scipy:cpu"
     assert result.status is SolveStatus.CONVERGED
     np.testing.assert_allclose(result.x, [1.0, 1.0])
+
+
+def test_scipy_solve_divergence_propagates_nan_inf() -> None:
+    matrix = csr_matrix([[0.0, 1.0], [1.0, 0.0]])
+    rhs = np.array([1.0, 0.0])
+
+    result = solve(
+        matrix,
+        rhs=rhs,
+        backend="scipy:cpu",
+        assume_spd=True,
+    )
+
+    assert result.status is SolveStatus.NAN_INF
+    assert result.error is None
+    assert math.isnan(result.residual_norm)
+    assert result.x is not None
+    assert np.isnan(result.x).any()
+
+
+def test_scipy_benchmark_divergence_propagates_nan_inf() -> None:
+    matrix = csr_matrix([[0.0, 1.0], [1.0, 0.0]])
+    rhs = np.array([1.0, 0.0])
+
+    report = benchmark(
+        matrix,
+        rhs=rhs,
+        backends=["scipy:cpu"],
+        assume_spd=True,
+        runs=1,
+    )
+
+    assert len(report.results) == 1
+    result = report.results[0]
+    assert result.status is SolveStatus.NAN_INF
+    assert result.error is None
+    assert math.isnan(result.residual_norm)
+    assert report.recommendations["end_to_end"].backend is None
+    assert report.recommendations["steady_state"].backend is None

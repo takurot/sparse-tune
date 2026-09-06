@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 import numpy as np
 import pytest
+from scipy.io import mmwrite
+from scipy.sparse import csr_matrix
 
 from sparsetune import (
     BenchmarkResult,
@@ -415,3 +418,33 @@ def test_runtime_input_error_goes_only_to_stderr(
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "bad matrix" in captured.err
+
+
+def test_cli_solve_divergence_reports_nan_inf_and_exits_3(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    matrix_path = tmp_path / "matrix.mtx"
+    rhs_path = tmp_path / "rhs.mtx"
+    mmwrite(matrix_path, csr_matrix([[0.0, 1.0], [1.0, 0.0]]))
+    mmwrite(rhs_path, np.array([[1.0], [0.0]]))
+
+    assert (
+        main(
+            [
+                "solve",
+                str(matrix_path),
+                "--rhs",
+                str(rhs_path),
+                "--backend",
+                "scipy:cpu",
+                "--assume-spd",
+            ]
+        )
+        == 3
+    )
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["status"] == "nan_inf"
+    assert payload["error"] is None
+    assert math.isnan(payload["residual_norm"])

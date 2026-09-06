@@ -167,11 +167,39 @@ def _is_non_negative_number(value: Any) -> bool:
     return _is_number(value) and float(value) >= 0.0
 
 
+def _is_valid_residual(value: Any, status: SolveStatus) -> bool:
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return False
+    try:
+        val = float(value)
+    except (OverflowError, ValueError):
+        return False
+    if status is SolveStatus.NAN_INF:
+        return math.isnan(val) or val >= 0.0
+    return _is_non_negative_number(value)
+
+
+def _is_valid_relative_residual(value: Any, status: SolveStatus) -> bool:
+    if value is None:
+        return True
+    return _is_valid_residual(value, status)
+
+
+def _match_metric(a: Any, b: Any) -> bool:
+    if isinstance(a, float) and isinstance(b, float):
+        return (math.isnan(a) and math.isnan(b)) or a == b
+    return a == b
+
+
 def _parse_sample(payload: Any) -> RunSample:
     if not isinstance(payload, dict):
         raise ValueError
     expected = {item.name for item in fields(RunSample)}
     if set(payload) != expected:
+        raise ValueError
+    try:
+        status = SolveStatus(payload["status"])
+    except (KeyError, ValueError):
         raise ValueError
     if payload["measure"] not in {"end-to-end", "steady-state"}:
         raise ValueError
@@ -180,11 +208,12 @@ def _parse_sample(payload: Any) -> RunSample:
         "setup_seconds",
         "solve_seconds",
         "total_seconds",
-        "residual_norm",
         "convergence_threshold",
     ):
         if not _is_non_negative_number(payload[name]):
             raise ValueError
+    if not _is_valid_residual(payload["residual_norm"], status):
+        raise ValueError
     if (
         not isinstance(payload["iterations"], int)
         or isinstance(payload["iterations"], bool)
@@ -193,7 +222,7 @@ def _parse_sample(payload: Any) -> RunSample:
         raise ValueError
     relative = payload["relative_residual"]
     pool_used = payload["pool_used_gb"]
-    if relative is not None and not _is_non_negative_number(relative):
+    if not _is_valid_relative_residual(relative, status):
         raise ValueError
     if pool_used is not None and not _is_non_negative_number(pool_used):
         raise ValueError
@@ -209,7 +238,7 @@ def _parse_sample(payload: Any) -> RunSample:
         residual_norm=float(payload["residual_norm"]),
         relative_residual=(None if relative is None else float(relative)),
         convergence_threshold=float(payload["convergence_threshold"]),
-        status=SolveStatus(payload["status"]),
+        status=status,
         error=payload["error"],
         pool_used_gb=None if pool_used is None else float(pool_used),
     )
@@ -284,24 +313,17 @@ def _validate_aggregate(result: SolverResult) -> None:
             primary.total_seconds,
         )
         or result.solve_seconds != solve_sample.solve_seconds
-        or (
-            result.iterations,
-            result.residual_norm,
-            result.relative_residual,
-            result.convergence_threshold,
-            result.pool_used_gb,
-            result.status,
-            result.error,
+        or result.iterations != accuracy_sample.iterations
+        or not _match_metric(result.residual_norm, accuracy_sample.residual_norm)
+        or not _match_metric(
+            result.relative_residual, accuracy_sample.relative_residual
         )
-        != (
-            accuracy_sample.iterations,
-            accuracy_sample.residual_norm,
-            accuracy_sample.relative_residual,
-            accuracy_sample.convergence_threshold,
-            accuracy_sample.pool_used_gb,
-            accuracy_sample.status,
-            accuracy_sample.error,
+        or not _match_metric(
+            result.convergence_threshold, accuracy_sample.convergence_threshold
         )
+        or not _match_metric(result.pool_used_gb, accuracy_sample.pool_used_gb)
+        or result.status != accuracy_sample.status
+        or result.error != accuracy_sample.error
     ):
         raise ValueError
 
@@ -326,16 +348,21 @@ def _parse_result(
         raise ValueError
     if expected_dtype is not None and payload["dtype"] != expected_dtype:
         raise ValueError
+    try:
+        status = SolveStatus(payload["status"])
+    except (KeyError, ValueError):
+        raise ValueError
     for name in (
         "transfer_seconds",
         "setup_seconds",
         "solve_seconds",
         "total_seconds",
-        "residual_norm",
         "convergence_threshold",
     ):
         if not _is_non_negative_number(payload[name]):
             raise ValueError
+    if not _is_valid_residual(payload["residual_norm"], status):
+        raise ValueError
     if (
         not isinstance(payload["iterations"], int)
         or isinstance(payload["iterations"], bool)
@@ -344,7 +371,7 @@ def _parse_result(
         raise ValueError
     relative = payload["relative_residual"]
     pool_used = payload["pool_used_gb"]
-    if relative is not None and not _is_non_negative_number(relative):
+    if not _is_valid_relative_residual(relative, status):
         raise ValueError
     if pool_used is not None and not _is_non_negative_number(pool_used):
         raise ValueError
@@ -366,7 +393,7 @@ def _parse_result(
         relative_residual=None if relative is None else float(relative),
         convergence_threshold=float(payload["convergence_threshold"]),
         pool_used_gb=None if pool_used is None else float(pool_used),
-        status=SolveStatus(payload["status"]),
+        status=status,
         error=payload["error"],
         samples=[_parse_sample(sample) for sample in payload["samples"]],
     )
@@ -564,8 +591,13 @@ def run_solve_in_subprocess(
                 solution.ndim != 1
                 or solution.shape[0] != expected_size
                 or solution.dtype.name not in _SUPPORTED_DTYPES
-                or not np.all(np.isfinite(solution))
             ):
+                raise ValueError
+            is_finite = bool(np.all(np.isfinite(solution)))
+            if result.status is SolveStatus.NAN_INF:
+                if is_finite:
+                    raise ValueError
+            elif not is_finite:
                 raise ValueError
             return result, np.asarray(solution).copy()
         except (
