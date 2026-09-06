@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pytest
 from scipy.sparse import csr_matrix, diags
@@ -382,8 +384,191 @@ def test_missing_cupy_is_reported_as_unsupported(
 
     monkeypatch.setattr(backends.importlib, "import_module", missing_module)
 
-    with pytest.raises(UnsupportedBackendError, match="CuPy is unavailable"):
+    with pytest.raises(
+        UnsupportedBackendError, match="CuPy is unavailable"
+    ) as exc_info:
         CuPyBackend()
+    assert isinstance(exc_info.value.__cause__, ImportError)
+
+
+@pytest.mark.parametrize("backend_id", ["cupy:cuda:-1", "cupy:cuda:x", "cupy:cuda:"])
+def test_cupy_invalid_device_index_is_rejected(backend_id: str) -> None:
+    with pytest.raises(UnsupportedBackendError, match="Unknown backend"):
+        CuPyBackend(backend_id)
+
+
+def _install_minimal_cupy(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    get_device_count: Any = lambda: 1,
+    device_cls: type | None = None,
+    memory_pool_cls: type | None = None,
+    runtime_cls: type | None = None,
+    driver_cls: type | None = None,
+) -> None:
+    if runtime_cls is None:
+
+        class DummyRuntime:
+            getDeviceCount = staticmethod(get_device_count)
+
+        runtime_cls = DummyRuntime
+
+    class DummyDevice:
+        def __init__(self, index: int) -> None:
+            pass
+
+        def use(self) -> None:
+            pass
+
+    class DummyCUDA:
+        runtime = runtime_cls
+        driver = driver_cls
+        Device = device_cls or DummyDevice
+        MemoryPool = memory_pool_cls or (lambda: object())
+
+    class DummyCuPy:
+        cuda = DummyCUDA
+
+    def dummy_import(name: str) -> object:
+        if name in ("cupy", "cupyx.scipy.sparse", "cupyx.scipy.sparse.linalg"):
+            return DummyCuPy
+        raise ModuleNotFoundError(name)
+
+    monkeypatch.setattr(backends.importlib, "import_module", dummy_import)
+
+
+def test_cupy_out_of_range_device_reports_device_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_minimal_cupy(monkeypatch, get_device_count=lambda: 1)
+
+    with pytest.raises(
+        UnsupportedBackendError,
+        match=r"CUDA device 2 is unavailable \(requested index 2 >= device count 1\)",
+    ) as exc_info:
+        CuPyBackend("cupy:cuda:2")
+    assert "CuPy is unavailable" not in str(exc_info.value)
+
+
+def test_cupy_zero_devices_reports_device_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_minimal_cupy(monkeypatch, get_device_count=lambda: 0)
+
+    with pytest.raises(
+        UnsupportedBackendError,
+        match="CUDA device 0 is unavailable: no CUDA devices detected",
+    ) as exc_info:
+        CuPyBackend("cupy:cuda:0")
+    assert "CuPy is unavailable" not in str(exc_info.value)
+
+
+def test_cupy_runtime_error_preserves_cause(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_count() -> int:
+        raise RuntimeError("cuda driver missing")
+
+    _install_minimal_cupy(monkeypatch, get_device_count=fail_count)
+
+    with pytest.raises(
+        UnsupportedBackendError, match="CUDA runtime is unavailable"
+    ) as exc_info:
+        CuPyBackend("cupy:cuda:0")
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
+    assert "cuda driver missing" in str(exc_info.value)
+
+
+def test_cupy_runtime_specific_error_is_converted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class CUDARuntimeError(Exception):
+        pass
+
+    class CustomRuntime:
+        @staticmethod
+        def getDeviceCount() -> int:
+            raise CUDARuntimeError("no device found via cuda runtime")
+
+    setattr(CustomRuntime, "CUDARuntimeError", CUDARuntimeError)
+
+    _install_minimal_cupy(monkeypatch, runtime_cls=CustomRuntime)
+
+    with pytest.raises(
+        UnsupportedBackendError, match="CUDA runtime is unavailable"
+    ) as exc_info:
+        CuPyBackend("cupy:cuda:0")
+    assert isinstance(exc_info.value.__cause__, CUDARuntimeError)
+    assert "no device found via cuda runtime" in str(exc_info.value)
+
+
+def test_cupy_device_activation_failure_preserves_cause(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FailingDevice:
+        def __init__(self, index: int) -> None:
+            pass
+
+        def use(self) -> None:
+            raise RuntimeError("device busy or lost")
+
+    _install_minimal_cupy(monkeypatch, device_cls=FailingDevice)
+
+    with pytest.raises(
+        UnsupportedBackendError, match="Failed to activate CUDA device 0"
+    ) as exc_info:
+        CuPyBackend("cupy:cuda:0")
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
+    assert "device busy or lost" in str(exc_info.value)
+
+
+def test_cupy_memory_pool_failure_preserves_cause(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FailingMemoryPool:
+        def __init__(self) -> None:
+            raise RuntimeError("out of host memory for pool")
+
+    _install_minimal_cupy(monkeypatch, memory_pool_cls=FailingMemoryPool)
+
+    with pytest.raises(
+        UnsupportedBackendError, match="Failed to initialize CUDA memory pool"
+    ) as exc_info:
+        CuPyBackend("cupy:cuda:0")
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
+    assert "out of host memory for pool" in str(exc_info.value)
+
+
+def test_cupy_unexpected_exception_propagates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def broken_import(_name: str) -> object:
+        raise TypeError("unexpected programmer error")
+
+    monkeypatch.setattr(backends.importlib, "import_module", broken_import)
+
+    with pytest.raises(TypeError, match="unexpected programmer error"):
+        CuPyBackend("cupy:cuda:0")
+
+
+def test_cupy_sanitizes_secrets_in_error_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_count() -> int:
+        raise RuntimeError(
+            "failure with api_key=secret123 and Authorization: Bearer secret_bearer_token and "
+            + ("long_tail_" * 70)
+        )
+
+    _install_minimal_cupy(monkeypatch, get_device_count=fail_count)
+
+    with pytest.raises(UnsupportedBackendError) as exc_info:
+        CuPyBackend("cupy:cuda:0")
+    message = str(exc_info.value)
+    assert "secret123" not in message
+    assert "secret_bearer_token" not in message
+    assert "[REDACTED]" in message
+    assert "...[truncated]" in message
 
 
 def test_get_backend_rejects_unknown_backend() -> None:

@@ -5,12 +5,33 @@ from __future__ import annotations
 from dataclasses import dataclass
 import importlib
 import inspect
+import re
 from typing import Any, Protocol
 
 import numpy as np
 from numpy.typing import NDArray
 from scipy.sparse import csr_matrix, issparse  # type: ignore[import-untyped]
 from scipy.sparse.linalg import cg  # type: ignore[import-untyped]
+
+
+_DIAGNOSTIC_LIMIT = 500
+_SECRET_ASSIGNMENT = re.compile(
+    r"(?i)\b([a-z0-9_-]*(?:api[_-]?key|token|secret|password|authorization)"
+    r"[a-z0-9_-]*)\b"
+    r"\s*[:=]\s*(?:\"[^\"]*\"|'[^']*'|\S+)"
+)
+_BEARER_TOKEN = re.compile(r"(?i)\bbearer\s+\S+")
+
+
+def _sanitize_message(message: str) -> str:
+    sanitized = _BEARER_TOKEN.sub("Bearer [REDACTED]", message)
+    sanitized = _SECRET_ASSIGNMENT.sub(
+        lambda match: f"{match.group(1)}=[REDACTED]",
+        sanitized,
+    )
+    if len(sanitized) > _DIAGNOSTIC_LIMIT:
+        sanitized = sanitized[:_DIAGNOSTIC_LIMIT] + "...[truncated]"
+    return sanitized
 
 
 _SUPPORTED_DTYPES = {"float32", "float64"}
@@ -218,9 +239,56 @@ class CuPyBackend:
             self._cp = importlib.import_module("cupy")
             self._sparse = importlib.import_module("cupyx.scipy.sparse")
             self._linalg = importlib.import_module("cupyx.scipy.sparse.linalg")
-            if device_index >= int(self._cp.cuda.runtime.getDeviceCount()):
-                raise RuntimeError(f"CUDA device {device_index} is unavailable")
+        except ImportError as error:
+            raise UnsupportedBackendError(
+                _sanitize_message(f"CuPy is unavailable: {error}")
+            ) from error
+
+        cuda_errors: tuple[type[BaseException], ...] = (RuntimeError,)
+        cuda_mod = getattr(self._cp, "cuda", None)
+        runtime_mod = (
+            getattr(cuda_mod, "runtime", None) if cuda_mod is not None else None
+        )
+        if runtime_mod is not None:
+            cuda_runtime_error = getattr(runtime_mod, "CUDARuntimeError", None)
+            if isinstance(cuda_runtime_error, type) and issubclass(
+                cuda_runtime_error, BaseException
+            ):
+                cuda_errors = (*cuda_errors, cuda_runtime_error)
+        driver_mod = getattr(cuda_mod, "driver", None) if cuda_mod is not None else None
+        if driver_mod is not None:
+            cuda_driver_error = getattr(driver_mod, "CUDADriverError", None)
+            if isinstance(cuda_driver_error, type) and issubclass(
+                cuda_driver_error, BaseException
+            ):
+                cuda_errors = (*cuda_errors, cuda_driver_error)
+
+        try:
+            device_count = int(self._cp.cuda.runtime.getDeviceCount())
+        except cuda_errors as error:
+            raise UnsupportedBackendError(
+                _sanitize_message(f"CUDA runtime is unavailable: {error}")
+            ) from error
+
+        if device_index >= device_count:
+            if device_count == 0:
+                raise UnsupportedBackendError(
+                    f"CUDA device {device_index} is unavailable: no CUDA devices detected"
+                )
+            raise UnsupportedBackendError(
+                f"CUDA device {device_index} is unavailable (requested index {device_index} >= device count {device_count})"
+            )
+
+        try:
             self._cp.cuda.Device(device_index).use()
+        except cuda_errors as error:
+            raise UnsupportedBackendError(
+                _sanitize_message(
+                    f"Failed to activate CUDA device {device_index}: {error}"
+                )
+            ) from error
+
+        try:
             # No private pinned-memory pool: CuPy exposes no scoped
             # equivalent of using_allocator() for set_pinned_memory_allocator
             # (it is process-global), and this backend never stages host
@@ -228,8 +296,10 @@ class CuPyBackend:
             # array does not use it -- so there is nothing of ours to
             # isolate or release.
             self._mempool = self._cp.cuda.MemoryPool()
-        except Exception as error:
-            raise UnsupportedBackendError(f"CuPy is unavailable: {error}") from error
+        except cuda_errors as error:
+            raise UnsupportedBackendError(
+                _sanitize_message(f"Failed to initialize CUDA memory pool: {error}")
+            ) from error
 
         self.id = backend_id
 
