@@ -24,12 +24,14 @@ _BEARER_TOKEN = re.compile(r"(?i)\bbearer\s+\S+")
 
 
 def _sanitize_message(message: str) -> str:
+    sanitized = _BEARER_TOKEN.sub("Bearer [REDACTED]", message)
     sanitized = _SECRET_ASSIGNMENT.sub(
         lambda match: f"{match.group(1)}=[REDACTED]",
-        message,
+        sanitized,
     )
-    sanitized = _BEARER_TOKEN.sub("Bearer [REDACTED]", sanitized)
-    return sanitized[:_DIAGNOSTIC_LIMIT]
+    if len(sanitized) > _DIAGNOSTIC_LIMIT:
+        sanitized = sanitized[:_DIAGNOSTIC_LIMIT] + "...[truncated]"
+    return sanitized
 
 
 _SUPPORTED_DTYPES = {"float32", "float64"}
