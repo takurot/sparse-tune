@@ -272,20 +272,20 @@ def test_v011_publication_evidence_is_complete() -> None:
 
 
 def test_cuda_extras_match_documented_gpu_validation_cupy_version() -> None:
-    import tomllib
+    import re
     from packaging.requirements import Requirement
     from packaging.version import Version
 
     root = Path(__file__).parents[2]
-    pyproject_data = tomllib.loads(
-        (root / "pyproject.toml").read_text(encoding="utf-8")
-    )
-    optional_deps = pyproject_data["project"]["optional-dependencies"]
+    pyproject_text = (root / "pyproject.toml").read_text(encoding="utf-8")
 
-    cuda12_req_str = optional_deps["cuda12"][0]
-    cuda13_req_str = optional_deps["cuda13"][0]
-    req12 = Requirement(cuda12_req_str)
-    req13 = Requirement(cuda13_req_str)
+    cuda12_match = re.search(r'cuda12\s*=\s*\["([^"]+)"\]', pyproject_text)
+    cuda13_match = re.search(r'cuda13\s*=\s*\["([^"]+)"\]', pyproject_text)
+    assert cuda12_match is not None
+    assert cuda13_match is not None
+
+    req12 = Requirement(cuda12_match.group(1))
+    req13 = Requirement(cuda13_match.group(1))
 
     assert req12.name == "cupy-cuda12x"
     assert req13.name == "cupy-cuda13x"
